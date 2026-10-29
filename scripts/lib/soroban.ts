@@ -240,29 +240,47 @@ export class Chain {
     return scValToNative(r.val) as T;
   }
 
-  /** Signs one Soroban auth entry for the guard's __check_auth with a raw ed25519 key. */
+  /**
+   * Signs one Soroban auth entry for the guard's __check_auth with a raw ed25519 key.
+   * Signs the credential variant the simulator returned. Testnet RPC returned the legacy
+   * `sorobanCredentialsAddress` in runs 4 to 6 and `sorobanCredentialsAddressV2` (CAP-71: the
+   * address is bound into the signed `...WithAddress` preimage) from run 7, 29 Oct 2026.
+   */
   async signGuardEntry(entry: xdr.SorobanAuthorizationEntry, key: Keypair, branch: GuardBranch): Promise<xdr.SorobanAuthorizationEntry> {
     const latest = (await this.server.getLatestLedger()).sequence;
-    const creds = xdr.expectUnionVariant(entry.credentials, 'sorobanCredentialsAddress').address;
+    const v2 = entry.credentials.type === 'sorobanCredentialsAddressV2';
+    const creds = v2
+      ? xdr.expectUnionVariant(entry.credentials, 'sorobanCredentialsAddressV2').addressV2
+      : xdr.expectUnionVariant(entry.credentials, 'sorobanCredentialsAddress').address;
     const signatureExpirationLedger = latest + 200;
-    const preimage = xdr.HashIdPreimage.envelopeTypeSorobanAuthorization(
-      new xdr.HashIdPreimageSorobanAuthorization({
-        networkId: sha256(Buffer.from(this.cfg.passphrase)),
-        nonce: creds.nonce,
-        signatureExpirationLedger,
-        invocation: entry.rootInvocation,
-      }),
-    );
+    const networkId = sha256(Buffer.from(this.cfg.passphrase));
+    const preimage = v2
+      ? xdr.HashIdPreimage.envelopeTypeSorobanAuthorizationWithAddress(
+          new xdr.HashIdPreimageSorobanAuthorizationWithAddress({
+            networkId,
+            nonce: creds.nonce,
+            signatureExpirationLedger,
+            address: creds.address,
+            invocation: entry.rootInvocation,
+          }),
+        )
+      : xdr.HashIdPreimage.envelopeTypeSorobanAuthorization(
+          new xdr.HashIdPreimageSorobanAuthorization({
+            networkId,
+            nonce: creds.nonce,
+            signatureExpirationLedger,
+            invocation: entry.rootInvocation,
+          }),
+        );
+    const signed = new xdr.SorobanAddressCredentials({
+      address: creds.address,
+      nonce: creds.nonce,
+      signatureExpirationLedger,
+      signature: guardSignature(branch, Buffer.from(key.sign(sha256(preimage.toXdr())))),
+    });
     // XDR values are immutable since stellar-sdk 17: build a signed copy.
     return new xdr.SorobanAuthorizationEntry({
-      credentials: xdr.SorobanCredentials.sorobanCredentialsAddress(
-        new xdr.SorobanAddressCredentials({
-          address: creds.address,
-          nonce: creds.nonce,
-          signatureExpirationLedger,
-          signature: guardSignature(branch, Buffer.from(key.sign(sha256(preimage.toXdr())))),
-        }),
-      ),
+      credentials: v2 ? xdr.SorobanCredentials.sorobanCredentialsAddressV2(signed) : xdr.SorobanCredentials.sorobanCredentialsAddress(signed),
       rootInvocation: entry.rootInvocation,
     });
   }

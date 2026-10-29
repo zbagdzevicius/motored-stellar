@@ -132,7 +132,7 @@ export function travelRuleToWire(data: TravelRuleData): TravelRuleWire {
  * Payload for a buyer's on-ramp virtual account: the buyer pays from their own
  * bank account and receives EURC in their own wallet.
  *
- * TODO(verify): which party the gateway expects as originator for a fiat ->
+ * TODO(verify, D5): which party the gateway expects as originator for a fiat ->
  * crypto virtual-account delivery (Bridge's guide lists virtual accounts as a
  * resource that accepts `travel_rule_data` but shows no on-ramp example). Asked
  * of the gateway; `isSelf` on both sides is the documented shape for a

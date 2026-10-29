@@ -85,7 +85,7 @@ export interface RampDestination {
    * Memo the ramp requires, if any. `value` is the text, the decimal id, or
    * the 32-byte hash as lowercase hex.
    *
-   * TODO(verify): which memo type the ramp provider issues for Stellar
+   * TODO(verify, D5): which memo type the ramp provider issues for Stellar
    * deposit instructions (see packages/ramps).
    */
   readonly memo?: { readonly type: "text" | "id" | "hash"; readonly value: string };

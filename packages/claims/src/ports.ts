@@ -6,7 +6,7 @@
 // They are declared here structurally (only the members this package calls) so the
 // claims package carries no dependency on the escrow package; any escrow-port
 // implementation with these members satisfies them.
-// TODO(verify): keep these member names aligned with packages/escrow/src/ports.ts.
+// Keep these member names aligned with packages/escrow/src/ports.ts.
 import type { Transaction } from "@stellar/stellar-sdk";
 
 /** Wall clock in unix seconds. */

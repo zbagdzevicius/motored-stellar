@@ -24,7 +24,7 @@ import { invokeAndSubmit, type ContractCall } from './soroban.js';
 export interface DeployerCallParams {
   /**
    * Contract ID of Trustless Work's deployer on this network.
-   * TODO(verify): obtain the official testnet deployer contract ID from Trustless Work; the lab used its own deployment.
+   * TODO(verify, D1 live API run): obtain the official testnet deployer contract ID from Trustless Work; the lab used its own deployment.
    */
   deployerContractId: string;
   /** Account that pays for and authorizes the deployment. */

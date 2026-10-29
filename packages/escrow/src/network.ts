@@ -59,7 +59,7 @@ export function sacContractId(asset: Asset, networkPassphrase: string = Networks
  */
 export const MAINNET_REFERENCE = Object.freeze({
   trustlessWorkApiBase: 'https://api.trustlesswork.com',
-  /** Observed single-release Wasm on mainnet (branch single-release-main). Which hash the v1 API deploys: TODO(verify) with Trustless Work. */
+  /** Observed single-release Wasm on mainnet (branch single-release-main). Which hash the v1 API deploys: TODO(verify, D1 live API run) with Trustless Work. */
   twWasmHash: '96d51751f924c938a081deb740056dc1c5cc60c6e645672062531f82957ed2fe',
   /** Fee account hardcoded in that Wasm. */
   trustlessWorkFeeAccount: 'GBWWSOATPLIC72ZBOIM7WJCT7VCAHNWW4QUBZ2H4FORMCCIUM5ZVKSZN',

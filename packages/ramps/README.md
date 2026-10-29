@@ -97,7 +97,8 @@ wire/ACH deposit route, so they do not apply to EUR on SEPA.
 
 ## TODO(verify)
 
-These items are not confirmed by the saved docs. Each one is marked in the code:
+These items are not confirmed by the saved docs. Each one is marked `TODO(verify, D5)` in the code
+and closes in the D5 Bridge sandbox run:
 
 - the response fields of `POST /customers` (`status` vs `kyc_status`);
 - `business_name` on a business-owned EUR external account request;

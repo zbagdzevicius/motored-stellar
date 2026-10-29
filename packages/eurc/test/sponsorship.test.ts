@@ -1,4 +1,4 @@
-import { Account, Asset, Keypair, Networks, type Operation } from "@stellar/stellar-sdk";
+import { Account, Asset, Keypair, Networks, type Operation, type OperationRecord } from "@stellar/stellar-sdk";
 import { describe, expect, it } from "vitest";
 import {
   KeypairSigner,
@@ -23,7 +23,7 @@ describe("sponsored account creation (CAP-33)", () => {
       networkPassphrase: NP,
     });
     expect(tx.source).toBe(sponsor.publicKey());
-    const ops = tx.operations as Operation[];
+    const ops = tx.operations as OperationRecord[];
     expect(ops.map((o) => o.type)).toEqual([
       "beginSponsoringFutureReserves",
       "createAccount",

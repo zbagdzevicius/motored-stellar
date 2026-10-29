@@ -81,28 +81,30 @@ export function sampleInvocation(): xdr.SorobanAuthorizedInvocation {
  * An address-credential auth entry for `address` over `sampleInvocation()`.
  * Built by authorizing with a throwaway key, then re-pointing the credential
  * at `address`; the stale signature is replaced by whoever signs it next.
+ * `v2` picks `sorobanCredentialsAddressV2` (CAP-71, what testnet RPC returns
+ * from 29 Oct 2026) over the legacy `sorobanCredentialsAddress`.
  */
-export async function entryFor(address: string): Promise<xdr.SorobanAuthorizationEntry> {
+export async function entryFor(address: string, opts: { v2?: boolean } = {}): Promise<xdr.SorobanAuthorizationEntry> {
+  const v2 = opts.v2 ?? false;
   const entry = await authorizeInvocation({
     signer: Keypair.random(),
     validUntilLedgerSeq: 1_000,
     invocation: sampleInvocation(),
     networkPassphrase: NET,
-    // Legacy SOROBAN_CREDENTIALS_ADDRESS, the form simulation returns today and
-    // the one the guard and wallets sign; stellar-sdk 17 defaults to V2 (CAP-71).
-    authV2: false,
+    authV2: v2,
   });
   // XDR values are immutable since stellar-sdk 17: rebuild with the new address.
-  const creds = xdr.expectUnionVariant(entry.credentials, 'sorobanCredentialsAddress').address;
+  const creds = v2
+    ? xdr.expectUnionVariant(entry.credentials, 'sorobanCredentialsAddressV2').addressV2
+    : xdr.expectUnionVariant(entry.credentials, 'sorobanCredentialsAddress').address;
+  const next = new xdr.SorobanAddressCredentials({
+    address: Address.fromString(address).toScAddress(),
+    nonce: creds.nonce,
+    signatureExpirationLedger: creds.signatureExpirationLedger,
+    signature: creds.signature,
+  });
   return new xdr.SorobanAuthorizationEntry({
-    credentials: xdr.SorobanCredentials.sorobanCredentialsAddress(
-      new xdr.SorobanAddressCredentials({
-        address: Address.fromString(address).toScAddress(),
-        nonce: creds.nonce,
-        signatureExpirationLedger: creds.signatureExpirationLedger,
-        signature: creds.signature,
-      }),
-    ),
+    credentials: v2 ? xdr.SorobanCredentials.sorobanCredentialsAddressV2(next) : xdr.SorobanCredentials.sorobanCredentialsAddress(next),
     rootInvocation: entry.rootInvocation,
   });
 }

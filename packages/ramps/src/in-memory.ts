@@ -428,7 +428,7 @@ export class InMemoryRamp implements RampProvider {
    * The seller's bank returns a SEPA payout. The EURC that funded it goes back
    * to the liquidation address's return instructions.
    *
-   * TODO(verify): whether the gateway returns the full EURC amount or the
+   * TODO(verify, D5): whether the gateway returns the full EURC amount or the
    * amount net of fees on a returned SEPA payout. Modelled as the full amount.
    */
   simulatePayoutReturn(transferId: string): { returnedTo: string; memo: string; units: bigint } {

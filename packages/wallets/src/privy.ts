@@ -153,7 +153,7 @@ export class PrivyRestClient implements PrivyClient {
       chain_type: input.chainType,
       owner: { user_id: input.ownerUserId },
     };
-    // TODO(verify): Privy's create-wallet reference lists `idempotency_key` as a
+    // TODO(verify, D2): Privy's create-wallet reference lists `idempotency_key` as a
     // body field; its idempotency guide may prefer a `privy-idempotency-key`
     // header. Confirm before relying on retries.
     if (input.idempotencyKey) body.idempotency_key = input.idempotencyKey;

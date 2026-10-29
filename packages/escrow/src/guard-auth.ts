@@ -110,21 +110,37 @@ export function guardSignatureScVal(branch: GuardBranch, signature: Uint8Array, 
   return vec([sym(branch), bytes(signature)]);
 }
 
-/** `entry` with its address credentials replaced by `creds` plus `patch`. */
+/**
+ * The address credentials of an entry and which variant carries them. Testnet RPC
+ * returned the legacy `sorobanCredentialsAddress` in runs 4 to 6 and
+ * `sorobanCredentialsAddressV2` (CAP-71) from run 7, 29 Oct 2026. Both carry the same
+ * `SorobanAddressCredentials`; V2 binds the address into the signed preimage.
+ * Null for source-account credentials and for credentials with delegates.
+ */
+export function addressCredentialsOf(
+  entry: xdr.SorobanAuthorizationEntry,
+): { creds: xdr.SorobanAddressCredentials; v2: boolean } | null {
+  const cred = entry.credentials;
+  if (cred.type === 'sorobanCredentialsAddress') return { creds: cred.address, v2: false };
+  if (cred.type === 'sorobanCredentialsAddressV2') return { creds: cred.addressV2, v2: true };
+  return null;
+}
+
+/** `entry` with its address credentials replaced by `creds` plus `patch`, in the same variant. */
 function withAddressCredentials(
   entry: xdr.SorobanAuthorizationEntry,
   creds: xdr.SorobanAddressCredentials,
+  v2: boolean,
   patch: { signatureExpirationLedger: number; signature?: xdr.ScVal },
 ): xdr.SorobanAuthorizationEntry {
+  const next = new xdr.SorobanAddressCredentials({
+    address: creds.address,
+    nonce: creds.nonce,
+    signatureExpirationLedger: patch.signatureExpirationLedger,
+    signature: patch.signature ?? creds.signature,
+  });
   return new xdr.SorobanAuthorizationEntry({
-    credentials: xdr.SorobanCredentials.sorobanCredentialsAddress(
-      new xdr.SorobanAddressCredentials({
-        address: creds.address,
-        nonce: creds.nonce,
-        signatureExpirationLedger: patch.signatureExpirationLedger,
-        signature: patch.signature ?? creds.signature,
-      }),
-    ),
+    credentials: v2 ? xdr.SorobanCredentials.sorobanCredentialsAddressV2(next) : xdr.SorobanCredentials.sorobanCredentialsAddress(next),
     rootInvocation: entry.rootInvocation,
   });
 }
@@ -136,17 +152,34 @@ export function cloneAuthEntry(entry: xdr.SorobanAuthorizationEntry | string): x
     : xdr.SorobanAuthorizationEntry.fromXdr(entry.toXdr());
 }
 
-/** The authorization payload hash of an address-credentialed entry (expiration already set). */
+/**
+ * The authorization payload hash of an address-credentialed entry (expiration already set).
+ * Legacy entries hash `ENVELOPE_TYPE_SOROBAN_AUTHORIZATION`; V2 entries hash
+ * `ENVELOPE_TYPE_SOROBAN_AUTHORIZATION_WITH_ADDRESS`, which also commits to the address.
+ */
 export function authorizationPayload(entry: xdr.SorobanAuthorizationEntry, networkPassphrase: string): Buffer {
-  const creds = xdr.expectUnionVariant(entry.credentials, 'sorobanCredentialsAddress').address;
-  const preimage = xdr.HashIdPreimage.envelopeTypeSorobanAuthorization(
-    new xdr.HashIdPreimageSorobanAuthorization({
-      networkId: hash(Buffer.from(networkPassphrase)),
-      nonce: creds.nonce,
-      signatureExpirationLedger: creds.signatureExpirationLedger,
-      invocation: entry.rootInvocation,
-    }),
-  );
+  const found = addressCredentialsOf(entry);
+  if (!found) throw new Error(`entry has ${entry.credentials.type} credentials, not address credentials`);
+  const { creds, v2 } = found;
+  const networkId = hash(Buffer.from(networkPassphrase));
+  const preimage = v2
+    ? xdr.HashIdPreimage.envelopeTypeSorobanAuthorizationWithAddress(
+        new xdr.HashIdPreimageSorobanAuthorizationWithAddress({
+          networkId,
+          nonce: creds.nonce,
+          signatureExpirationLedger: creds.signatureExpirationLedger,
+          address: creds.address,
+          invocation: entry.rootInvocation,
+        }),
+      )
+    : xdr.HashIdPreimage.envelopeTypeSorobanAuthorization(
+        new xdr.HashIdPreimageSorobanAuthorization({
+          networkId,
+          nonce: creds.nonce,
+          signatureExpirationLedger: creds.signatureExpirationLedger,
+          invocation: entry.rootInvocation,
+        }),
+      );
   return Buffer.from(hash(preimage.toXdr()));
 }
 
@@ -155,9 +188,9 @@ export function describeAuthEntry(entry: xdr.SorobanAuthorizationEntry): { addre
   const fn = entry.rootInvocation.function;
   if (fn.type !== 'sorobanAuthorizedFunctionTypeContractFn') throw new Error('entry does not authorize a contract call');
   const call = fn.contractFn;
-  const cred = entry.credentials;
+  const found = addressCredentialsOf(entry);
   return {
-    address: cred.type === 'sorobanCredentialsAddress' ? Address.fromScAddress(cred.address.address).toString() : undefined,
+    address: found ? Address.fromScAddress(found.creds.address).toString() : undefined,
     contractId: Address.fromScAddress(call.contractAddress).toString(),
     fn: call.functionName.toString(),
     args: call.args,
@@ -178,7 +211,8 @@ export interface GuardSigningOptions {
 }
 
 /**
- * Signs every address-credentialed entry whose address is the guard; other
+ * Signs every address-credentialed entry (legacy or V2, kept in the variant it
+ * arrived in) whose address is the guard; other
  * entries are returned unchanged (copied). Throws if no entry is for the guard,
  * or if `expect` is given and an entry authorizes a different call.
  */
@@ -190,12 +224,12 @@ export async function signGuardEntries(
   const out: xdr.SorobanAuthorizationEntry[] = [];
   for (const e0 of entries) {
     const e = cloneAuthEntry(e0);
-    const cred = e.credentials;
-    if (cred.type !== 'sorobanCredentialsAddress') {
+    const found = addressCredentialsOf(e);
+    if (!found) {
       out.push(e);
       continue;
     }
-    const creds = cred.address;
+    const { creds, v2 } = found;
     if (Address.fromScAddress(creds.address).toString() !== opts.guardContractId) {
       out.push(e);
       continue;
@@ -208,11 +242,11 @@ export async function signGuardEntries(
     }
     // XDR values are immutable since stellar-sdk 17: rebuild the entry with the
     // expiration set, hash that, then rebuild it again with the signature.
-    const withExpiry = withAddressCredentials(e, creds, { signatureExpirationLedger: opts.validUntilLedger });
+    const withExpiry = withAddressCredentials(e, creds, v2, { signatureExpirationLedger: opts.validUntilLedger });
     const payload = authorizationPayload(withExpiry, opts.networkPassphrase);
     const sig = await opts.key.signAuthPayload(payload);
     out.push(
-      withAddressCredentials(e, creds, {
+      withAddressCredentials(e, creds, v2, {
         signatureExpirationLedger: opts.validUntilLedger,
         signature: guardSignatureScVal(opts.branch, sig, opts.claim),
       }),

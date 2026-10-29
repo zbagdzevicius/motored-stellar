@@ -117,7 +117,7 @@ export class WalletsKitProvider implements WalletProvider {
     }
     await this.#assertWalletNetwork();
     const address = await this.getAddress();
-    // TODO(verify): wallets differ on what `signAuthEntry` takes and returns.
+    // TODO(verify, D2): wallets differ on what `signAuthEntry` takes and returns.
     // Freighter's API takes the base64 HashIdPreimage XDR and returns the
     // base64 64-byte signature over its SHA-256; confirm the kit passes both
     // through unchanged for every module we enable.

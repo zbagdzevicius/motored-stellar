@@ -6,9 +6,10 @@
  * - EscrowStateReader: each escrow's current `get_escrow` (roles, flags, amount, token).
  * - EventSource: token transfers into and out of the footprint escrows.
  *
- * RPC keeps a limited event history (TODO(verify): the retention window of the
- * chosen RPC provider), so a full 45-day window is normally read from an
- * indexer export instead: pass `--observations <file>` to the CLI, or plug an
+ * RPC keeps a limited event history (SDF testnet RPC: `ledgerRetentionWindow` 120960
+ * ledgers, about 7 days, read with getHealth on 29 Oct 2026, run 7; TODO(verify, D12):
+ * the window of the mainnet RPC provider chosen for the live rollout), so a full 45-day
+ * window is normally read from an indexer export instead: pass `--observations <file>` to the CLI, or plug an
  * indexer-backed EventSource here.
  */
 import { Address, scValToNative, xdr, type rpc } from '@stellar/stellar-sdk';
@@ -91,11 +92,24 @@ export class RpcEventSource implements EventSource {
         const t = decodeTransfer(ev.topic, ev.value, ev.ledgerClosedAt, ev.txHash);
         if (t && (accounts.has(t.from) || accounts.has(t.to))) out.push(t);
       }
-      if (page.events.length < this.pageLimit || !page.cursor) break;
+      // A short page does not mean the end: the RPC scans a bounded ledger range per request and
+      // returns a cursor at the end of that range (seen on testnet 29 Oct 2026, run 7 metric: the
+      // first page from ledger 5431300 held 23 events and stopped near ledger 5441300, the second
+      // held the run 6 and run 7 transfers). Stop only when the cursor stops moving, or when the
+      // page is short and the cursor has reached the RPC's latest ledger.
+      if (!page.cursor || page.cursor === cursor) break;
+      if (page.events.length < this.pageLimit && cursorLedger(page.cursor) >= page.latestLedger) break;
       cursor = page.cursor;
     }
     return out;
   }
+}
+
+/** Ledger sequence encoded in an RPC event cursor (`<toid>-<index>`, TOID ledger in the high 32 bits). */
+export function cursorLedger(cursor: string): number {
+  const toid = cursor.split('-')[0];
+  if (!toid || !/^\d+$/.test(toid)) return Number.POSITIVE_INFINITY;
+  return Number(BigInt(toid) >> 32n);
 }
 
 /** Decodes one SAC transfer event, or returns undefined for anything else. */

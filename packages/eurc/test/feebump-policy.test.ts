@@ -191,6 +191,36 @@ describe("fee-bump policy: rejections", () => {
       "foreign-auth",
     ],
     [
+      "a call carrying someone else's V2 (CAP-71) address authorisation",
+      (w) =>
+        innerTx(
+          w.buyer,
+          [call(w.escrow, "fund_escrow", [addr(w.buyer.publicKey()), xdr.ScVal.scvVoid(), xdr.ScVal.scvVoid()], [addressAuth(w.stranger.publicKey(), w.escrow, true)])],
+          SOROBAN,
+        ),
+      "foreign-auth",
+    ],
+    [
+      "a call carrying the source's own V2 address authorisation (only source-account auth is sponsored)",
+      (w) =>
+        innerTx(
+          w.buyer,
+          [call(w.escrow, "fund_escrow", [addr(w.buyer.publicKey()), xdr.ScVal.scvVoid(), i128(1_000n)], [addressAuth(w.buyer.publicKey(), w.escrow, true)])],
+          SOROBAN,
+        ),
+      "foreign-auth",
+    ],
+    [
+      "a guard contest carrying a V2 address authorisation",
+      (w) =>
+        innerTx(
+          w.buyer,
+          [call(w.guard, "contest", [addr(w.escrow), xdr.ScVal.scvBytes(Buffer.alloc(32))], [addressAuth(w.stranger.publicKey(), w.guard, true)])],
+          SOROBAN,
+        ),
+      "foreign-auth",
+    ],
+    [
       "a tx for another network",
       (w) =>
         innerTx(w.buyer, [Operation.payment({ destination: w.rampAddress, asset: w.xeur, amount: "1" })], {

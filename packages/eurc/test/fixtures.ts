@@ -103,17 +103,22 @@ export function call(contract: string, fn: string, args: xdr.ScVal[], auth: xdr.
 export const fundEscrow = (escrow: string, signer: string, amount = 1_000_000_000n) =>
   call(escrow, "fund_escrow", [addr(signer), xdr.ScVal.scvVoid(), i128(amount)]);
 
-/** An auth entry with address credentials for `who` (someone else's signature). */
-export function addressAuth(who: string, contract: string): xdr.SorobanAuthorizationEntry {
+/**
+ * An auth entry with address credentials for `who` (someone else's signature).
+ * `v2` uses `sorobanCredentialsAddressV2` (CAP-71), which testnet RPC returns
+ * from 29 Oct 2026, instead of the legacy `sorobanCredentialsAddress`.
+ */
+export function addressAuth(who: string, contract: string, v2 = false): xdr.SorobanAuthorizationEntry {
+  const creds = new xdr.SorobanAddressCredentials({
+    address: new Address(who).toScAddress(),
+    nonce: xdr.Int64.fromString("1"),
+    signatureExpirationLedger: 100,
+    signature: xdr.ScVal.scvVoid(),
+  });
   return new xdr.SorobanAuthorizationEntry({
-    credentials: xdr.SorobanCredentials.sorobanCredentialsAddress(
-      new xdr.SorobanAddressCredentials({
-        address: new Address(who).toScAddress(),
-        nonce: xdr.Int64.fromString("1"),
-        signatureExpirationLedger: 100,
-        signature: xdr.ScVal.scvVoid(),
-      }),
-    ),
+    credentials: v2
+      ? xdr.SorobanCredentials.sorobanCredentialsAddressV2(creds)
+      : xdr.SorobanCredentials.sorobanCredentialsAddress(creds),
     rootInvocation: new xdr.SorobanAuthorizedInvocation({
       function: xdr.SorobanAuthorizedFunction.sorobanAuthorizedFunctionTypeContractFn(
         new xdr.InvokeContractArgs({
