@@ -59,7 +59,7 @@ export class InMemorySubmitter implements Submitter {
 
   async submit(tx: Transaction | FeeBumpTransaction): Promise<SubmitOutcome> {
     this.submitted.push(tx);
-    const hash = tx.hash().toString("hex");
+    const hash = Buffer.from(tx.hash()).toString("hex");
     return this.submitError ? { ok: false, hash, error: this.submitError } : { ok: true, hash };
   }
 }

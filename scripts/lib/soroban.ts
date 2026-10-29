@@ -96,8 +96,8 @@ export function simCost(sim: rpc.Api.SimulateTransactionResponse): SimCost {
     return { error: sim.error.slice(0, 200) };
   }
   if (!rpc.Api.isSimulationSuccess(sim) || !sim.transactionData) return { error: 'simulation needs restore' };
-  const r = sim.transactionData.build().resources();
-  return { instructions: r.instructions(), minResourceFee: sim.minResourceFee };
+  const r = sim.transactionData.build().resources;
+  return { instructions: r.instructions, minResourceFee: sim.minResourceFee };
 }
 
 /** ScVal for a guard signature in the given branch. */
@@ -106,7 +106,7 @@ export function guardSignature(branch: GuardBranch, sig: Buffer): xdr.ScVal {
   return variant(branch.kind, bytes(sig));
 }
 
-const keyId = (k: xdr.LedgerKey): string => k.toXDR('base64');
+const keyId = (k: xdr.LedgerKey): string => k.toXdr('base64');
 
 /**
  * Union of Soroban footprints. A key that any input writes stays read-write and is
@@ -115,8 +115,8 @@ const keyId = (k: xdr.LedgerKey): string => k.toXDR('base64');
 export function mergeFootprints(fps: xdr.LedgerFootprint[]): { readOnly: xdr.LedgerKey[]; readWrite: xdr.LedgerKey[] } {
   const rw = new Map<string, xdr.LedgerKey>();
   const ro = new Map<string, xdr.LedgerKey>();
-  for (const fp of fps) for (const k of fp.readWrite()) rw.set(keyId(k), k);
-  for (const fp of fps) for (const k of fp.readOnly()) if (!rw.has(keyId(k))) ro.set(keyId(k), k);
+  for (const fp of fps) for (const k of fp.readWrite) rw.set(keyId(k), k);
+  for (const fp of fps) for (const k of fp.readOnly) if (!rw.has(keyId(k))) ro.set(keyId(k), k);
   return { readOnly: [...ro.values()], readWrite: [...rw.values()] };
 }
 
@@ -124,15 +124,15 @@ export function mergeFootprints(fps: xdr.LedgerFootprint[]): { readOnly: xdr.Led
 export function contractErrorCodes(events: xdr.DiagnosticEvent[] | undefined): number[] {
   const out: number[] = [];
   const visit = (v: xdr.ScVal): void => {
-    if (v.switch().name === 'scvError' && v.error().switch().name === 'sceContract') {
-      const c = v.error().contractCode();
+    if (v.type === 'scvError' && v.error.type === 'sceContract') {
+      const c = v.error.contractCode;
       if (!out.includes(c)) out.push(c);
-    } else if (v.switch().name === 'scvVec') for (const x of v.vec() ?? []) visit(x);
+    } else if (v.type === 'scvVec') for (const x of v.vec ?? []) visit(x);
   };
   for (const d of events ?? []) {
-    const body = d.event().body().v0();
-    for (const t of body.topics()) visit(t);
-    visit(body.data());
+    const body = d.event.body.v0;
+    for (const t of body.topics) visit(t);
+    visit(body.data);
   }
   return out;
 }
@@ -145,8 +145,8 @@ function diagnosticEventsOf(g: rpc.Api.GetFailedTransactionResponse | rpc.Api.Ge
   if (g.diagnosticEventsXdr && g.diagnosticEventsXdr.length > 0) return g.diagnosticEventsXdr;
   try {
     const m = g.resultMetaXdr;
-    if (m.switch() === 4) return m.v4().diagnosticEvents();
-    if (m.switch() === 3) return m.v3().sorobanMeta()?.diagnosticEvents() ?? [];
+    if (m.type === 'v4') return m.v4.diagnosticEvents;
+    if (m.type === 'v3') return m.v3.sorobanMeta?.diagnosticEvents ?? [];
   } catch {
     // Unknown meta shape: no events.
   }
@@ -185,8 +185,9 @@ export class Chain {
 
   async contractTx(source: string, contractId: string, fn: string, args: xdr.ScVal[], auth?: xdr.SorobanAuthorizationEntry[]): Promise<Transaction> {
     const acct = await this.server.getAccount(source);
-    const op = new Contract(contractId).call(fn, ...args);
-    if (auth) op.body().invokeHostFunctionOp().auth(auth);
+    const op = auth
+      ? Operation.invokeContractFunction({ contract: contractId, function: fn, args, auth })
+      : new Contract(contractId).call(fn, ...args);
     return new TransactionBuilder(acct, { fee: CONTRACT_BASE_FEE, networkPassphrase: this.cfg.passphrase }).addOperation(op).setTimeout(300).build();
   }
 
@@ -242,18 +243,28 @@ export class Chain {
   /** Signs one Soroban auth entry for the guard's __check_auth with a raw ed25519 key. */
   async signGuardEntry(entry: xdr.SorobanAuthorizationEntry, key: Keypair, branch: GuardBranch): Promise<xdr.SorobanAuthorizationEntry> {
     const latest = (await this.server.getLatestLedger()).sequence;
-    const creds = entry.credentials().address();
-    creds.signatureExpirationLedger(latest + 200);
+    const creds = xdr.expectUnionVariant(entry.credentials, 'sorobanCredentialsAddress').address;
+    const signatureExpirationLedger = latest + 200;
     const preimage = xdr.HashIdPreimage.envelopeTypeSorobanAuthorization(
       new xdr.HashIdPreimageSorobanAuthorization({
         networkId: sha256(Buffer.from(this.cfg.passphrase)),
-        nonce: creds.nonce(),
-        signatureExpirationLedger: creds.signatureExpirationLedger(),
-        invocation: entry.rootInvocation(),
+        nonce: creds.nonce,
+        signatureExpirationLedger,
+        invocation: entry.rootInvocation,
       }),
     );
-    creds.signature(guardSignature(branch, key.sign(sha256(preimage.toXDR()))));
-    return entry;
+    // XDR values are immutable since stellar-sdk 17: build a signed copy.
+    return new xdr.SorobanAuthorizationEntry({
+      credentials: xdr.SorobanCredentials.sorobanCredentialsAddress(
+        new xdr.SorobanAddressCredentials({
+          address: creds.address,
+          nonce: creds.nonce,
+          signatureExpirationLedger,
+          signature: guardSignature(branch, Buffer.from(key.sign(sha256(preimage.toXdr())))),
+        }),
+      ),
+      rootInvocation: entry.rootInvocation,
+    });
   }
 
   /**
@@ -333,21 +344,20 @@ export class Chain {
     if (!rpc.Api.isSimulationSuccess(enf2) || !enf2.transactionData) return this.refuse(label, `accepted sibling: enforce-sim ${simCost(enf2).error ?? 'no data'}`);
 
     const sib = enf2.transactionData.build();
-    const fp = mergeFootprints([rec.transactionData.build().resources().footprint(), sib.resources().footprint()]);
-    const res = sib.resources();
-    const instructions = Math.min(Math.ceil(res.instructions() * 1.5) + 2_000_000, 400_000_000);
+    const fp = mergeFootprints([rec.transactionData.build().resources.footprint, sib.resources.footprint]);
+    const res = sib.resources;
+    const instructions = Math.min(Math.ceil(res.instructions * 1.5) + 2_000_000, 400_000_000);
     const resourceFee = BigInt(enf2.minResourceFee) * 2n + 10_000_000n;
     const data = new SorobanDataBuilder()
       .setFootprint(fp.readOnly, fp.readWrite)
-      .setResources(instructions, res.diskReadBytes() + 20_000, res.writeBytes() + 5_000)
+      .setResources(instructions, res.diskReadBytes + 20_000, res.writeBytes + 5_000)
       .setResourceFee(resourceFee)
       .build();
     this.note(`${label}: enforce-sim refuses with ${guardErrorLabel(expectCode)}; landing it with a manual footprint`, {
       readOnly: fp.readOnly.length, readWrite: fp.readWrite.length, instructions, resourceFee,
     });
     const acct = await this.server.getAccount(submitter.publicKey());
-    const op = new Contract(escrow).call(fn, ...args);
-    op.body().invokeHostFunctionOp().auth([signed]);
+    const op = Operation.invokeContractFunction({ contract: escrow, function: fn, args, auth: [signed] });
     const tx = new TransactionBuilder(acct, { fee: CONTRACT_BASE_FEE, networkPassphrase: this.cfg.passphrase }).addOperation(op).setSorobanData(data).setTimeout(300).build();
     const r = await this.send(label, tx, [submitter]);
     const confirmed = r.status === 'FAILED' && (r.errors ?? []).some((e) => e.startsWith(`Error(Contract, #${expectCode})`));

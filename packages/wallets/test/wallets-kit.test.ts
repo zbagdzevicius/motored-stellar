@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Keypair, Networks } from '@stellar/stellar-sdk';
+import { Keypair, Networks, xdr } from '@stellar/stellar-sdk';
 
 import { WalletsKitProvider, authorizeEntryWithWallet, buildAuthEntryPreimage } from '../src/index.js';
 import { NET, entryFor, sorobanTxFrom } from './helpers.js';
@@ -89,7 +89,7 @@ describe('WalletsKitProvider', () => {
   it('signs auth entries when enabled and rejects a signature from another key', async () => {
     const { key, kit, wallet } = setup({ enableAuthEntries: true });
     const entry = await authorizeEntryWithWallet(await entryFor(key.publicKey()), wallet, 4_000);
-    expect(entry.credentials().address().signatureExpirationLedger()).toBe(4_000);
+    expect(xdr.expectUnionVariant(entry.credentials, 'sorobanCredentialsAddress').address.signatureExpirationLedger).toBe(4_000);
 
     kit.misbehaviour = 'lying-signer';
     await expect(wallet.signAuthEntry(buildAuthEntryPreimage(entry, NET))).rejects.toMatchObject({

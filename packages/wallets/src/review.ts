@@ -60,14 +60,14 @@ function toJsonSafe(value: unknown): unknown {
 }
 
 function summarizeHostFunction(func: xdr.HostFunction): Pick<OperationSummary, 'contractId' | 'function' | 'args'> {
-  if (func.switch().value !== xdr.HostFunctionType.hostFunctionTypeInvokeContract().value) {
-    return { function: func.switch().name };
+  if (func.type !== 'hostFunctionTypeInvokeContract') {
+    return { function: func.type };
   }
-  const call = func.invokeContract();
+  const call = func.invokeContract;
   return {
-    contractId: Address.fromScAddress(call.contractAddress()).toString(),
-    function: call.functionName().toString(),
-    args: call.args().map((arg) => toJsonSafe(scValToNative(arg))),
+    contractId: Address.fromScAddress(call.contractAddress).toString(),
+    function: call.functionName.toString(),
+    args: call.args.map((arg) => toJsonSafe(scValToNative(arg))),
   };
 }
 
@@ -90,7 +90,7 @@ export function summarizeTransaction(tx: Transaction): TransactionSummary {
   });
 
   const summary: TransactionSummary = {
-    hash: tx.hash().toString('hex'),
+    hash: Buffer.from(tx.hash()).toString('hex'),
     networkPassphrase: tx.networkPassphrase,
     source: tx.source,
     fee: tx.fee,
@@ -98,7 +98,14 @@ export function summarizeTransaction(tx: Transaction): TransactionSummary {
     operations,
   };
   if (tx.memo.type !== 'none' && tx.memo.value !== null) {
-    summary.memo = Buffer.isBuffer(tx.memo.value) ? `0x${tx.memo.value.toString('hex')}` : String(tx.memo.value);
+    const v = tx.memo.value;
+    // stellar-sdk 17 decodes text memos as bytes too: show text as UTF-8, hash/return as 0x-hex.
+    summary.memo =
+      v instanceof Uint8Array
+        ? tx.memo.type === 'text'
+          ? Buffer.from(v).toString('utf8')
+          : `0x${Buffer.from(v).toString('hex')}`
+        : String(v);
   }
   return summary;
 }

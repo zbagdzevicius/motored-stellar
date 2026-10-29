@@ -83,7 +83,26 @@ export function sampleInvocation(): xdr.SorobanAuthorizedInvocation {
  * at `address`; the stale signature is replaced by whoever signs it next.
  */
 export async function entryFor(address: string): Promise<xdr.SorobanAuthorizationEntry> {
-  const entry = await authorizeInvocation(Keypair.random(), 1_000, sampleInvocation(), undefined, NET);
-  entry.credentials().address().address(Address.fromString(address).toScAddress());
-  return entry;
+  const entry = await authorizeInvocation({
+    signer: Keypair.random(),
+    validUntilLedgerSeq: 1_000,
+    invocation: sampleInvocation(),
+    networkPassphrase: NET,
+    // Legacy SOROBAN_CREDENTIALS_ADDRESS, the form simulation returns today and
+    // the one the guard and wallets sign; stellar-sdk 17 defaults to V2 (CAP-71).
+    authV2: false,
+  });
+  // XDR values are immutable since stellar-sdk 17: rebuild with the new address.
+  const creds = xdr.expectUnionVariant(entry.credentials, 'sorobanCredentialsAddress').address;
+  return new xdr.SorobanAuthorizationEntry({
+    credentials: xdr.SorobanCredentials.sorobanCredentialsAddress(
+      new xdr.SorobanAddressCredentials({
+        address: Address.fromString(address).toScAddress(),
+        nonce: creds.nonce,
+        signatureExpirationLedger: creds.signatureExpirationLedger,
+        signature: creds.signature,
+      }),
+    ),
+    rootInvocation: entry.rootInvocation,
+  });
 }

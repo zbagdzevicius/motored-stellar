@@ -63,7 +63,7 @@ export class HorizonRpcSubmitter implements Submitter {
   }
 
   private async submitClassic(tx: Transaction | FeeBumpTransaction): Promise<SubmitOutcome> {
-    const hash = tx.hash().toString("hex");
+    const hash = Buffer.from(tx.hash()).toString("hex");
     try {
       const r = await this.horizon.submitTransaction(tx);
       return { ok: true, hash: r.hash };
@@ -77,7 +77,7 @@ export class HorizonRpcSubmitter implements Submitter {
   private async submitSoroban(tx: Transaction | FeeBumpTransaction): Promise<SubmitOutcome> {
     const sent = await this.rpc.sendTransaction(tx);
     if (sent.status === "ERROR") {
-      return { ok: false, hash: sent.hash, error: sent.errorResult?.result().switch().name ?? "ERROR" };
+      return { ok: false, hash: sent.hash, error: sent.errorResult?.result.type ?? "ERROR" };
     }
     const deadline = Date.now() + this.pollTimeoutMs;
     while (Date.now() < deadline) {

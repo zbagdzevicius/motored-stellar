@@ -1,0 +1,20 @@
+# Weekly dependency updates, grouped so one PR per ecosystem carries the week's bumps.
+# CI (typecheck, unit tests, example flow) gates each PR; nothing merges on its own.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      npm-dependencies:
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ["*"]

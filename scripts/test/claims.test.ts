@@ -100,7 +100,7 @@ describe('claim encodings', () => {
 
   it("builds the guard's Claim struct with sorted field names", () => {
     const v = claimToScVal(anchored);
-    const keys = (v.map() as xdr.ScMapEntry[]).map((e) => e.key().sym().toString());
+    const keys = (xdr.expectUnionVariant(v, 'scvMap').map ?? []).map((e) => xdr.expectUnionVariant(e.key, 'scvSymbol').sym.toString());
     expect(keys).toEqual(['batch_id', 'carrier_event_ref', 'delivered_at', 'index', 'order_ref', 'parcels_commit', 'proof']);
   });
 });

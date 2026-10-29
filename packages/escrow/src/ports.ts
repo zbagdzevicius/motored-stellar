@@ -164,19 +164,19 @@ export class InMemorySubmitter implements Submitter {
     const op = tx.operations[0];
     if (!op || op.type !== 'invokeHostFunction') return { ok: false, error: 'not an invokeHostFunction transaction' };
     const fn = op.func;
-    if (fn.switch().name !== 'hostFunctionTypeInvokeContract') return { ok: false, error: 'not a contract call' };
-    const call = fn.invokeContract();
-    const contractId = Address.fromScAddress(call.contractAddress()).toString();
-    const name = call.functionName().toString();
+    if (fn.type !== 'hostFunctionTypeInvokeContract') return { ok: false, error: 'not a contract call' };
+    const call = fn.invokeContract;
+    const contractId = Address.fromScAddress(call.contractAddress).toString();
+    const name = call.functionName.toString();
     const h = this.handlers.get(`${contractId}.${name}`);
     if (!h) return { ok: false, error: `no in-memory handler for ${contractId}.${name}` };
-    return h(call.args(), tx, authMode);
+    return h(call.args, tx, authMode);
   }
   async send(tx: Transaction | FeeBumpTransaction): Promise<SubmitResult> {
     this.sent.push(tx);
     const inner = 'innerTransaction' in tx ? tx.innerTransaction : tx;
     this.accounts.set(inner.source, BigInt(inner.sequence));
-    return { hash: tx.hash().toString('hex'), status: 'SUCCESS' };
+    return { hash: Buffer.from(tx.hash()).toString('hex'), status: 'SUCCESS' };
   }
 }
 

@@ -5,18 +5,18 @@ import { summarize } from '../testnet/refusals.js';
 
 const cid = (n: number) => StrKey.encodeContract(Buffer.alloc(32, n));
 const dataKey = (n: number, sym: string) =>
-  xdr.LedgerKey.contractData(new xdr.LedgerKeyContractData({ contract: new Address(cid(n)).toScAddress(), key: xdr.ScVal.scvSymbol(sym), durability: xdr.ContractDataDurability.persistent() }));
+  xdr.LedgerKey.contractData(new xdr.LedgerKeyContractData({ contract: new Address(cid(n)).toScAddress(), key: xdr.ScVal.scvSymbol(sym), durability: xdr.ContractDataDurability.persistent }));
 const fp = (ro: xdr.LedgerKey[], rw: xdr.LedgerKey[]) => new xdr.LedgerFootprint({ readOnly: ro, readWrite: rw });
-const ids = (ks: xdr.LedgerKey[]) => ks.map((k) => k.toXDR('base64')).sort();
+const ids = (ks: xdr.LedgerKey[]) => ks.map((k) => k.toXdr('base64')).sort();
 
 const errEvent = (code: number) =>
   new xdr.DiagnosticEvent({
     inSuccessfulContractCall: false,
     event: new xdr.ContractEvent({
-      ext: new xdr.ExtensionPoint(0),
+      ext: xdr.ExtensionPoint.v0(),
       contractId: null,
-      type: xdr.ContractEventType.diagnostic(),
-      body: new xdr.ContractEventBody(0, new xdr.ContractEventV0({
+      type: xdr.ContractEventType.diagnostic,
+      body: xdr.ContractEventBody.v0(new xdr.ContractEventV0({
         topics: [xdr.ScVal.scvSymbol('error'), xdr.ScVal.scvError(xdr.ScError.sceContract(code))],
         data: xdr.ScVal.scvVec([xdr.ScVal.scvString('escalating error to panic'), xdr.ScVal.scvError(xdr.ScError.sceContract(code))]),
       })),

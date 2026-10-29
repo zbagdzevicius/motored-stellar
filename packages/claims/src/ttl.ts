@@ -22,7 +22,7 @@ import {
 } from "@stellar/stellar-sdk";
 import { assertLen, toU64 } from "./bytes.js";
 
-const persistent = () => xdr.ContractDataDurability.persistent();
+const persistent = () => xdr.ContractDataDurability.persistent;
 
 /** Persistent contract-data key `key` of contract `contractId`. */
 export function contractDataKey(contractId: string, key: xdr.ScVal): xdr.LedgerKey {

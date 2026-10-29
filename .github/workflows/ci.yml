@@ -17,11 +17,11 @@ jobs:
   secrets-and-lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Check for secrets (seeds, phrases, .env, key files)
         run: ./scripts/check-secrets.sh
-      - uses: actions/setup-node@v4
-        with: { node-version: 22 }
+      - uses: actions/setup-node@v7
+        with: { node-version: 24 }
       - name: Docs lint (em dashes, secret-shaped strings, banned terms)
         run: node scripts/lint/docs-lint.mjs
 
@@ -29,10 +29,11 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node: [20, 22]
+        # vitest 5 and @stellar/stellar-sdk 17 need Node >= 22.12 (package.json "engines").
+        node: [22, 24]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with: { node-version: "${{ matrix.node }}" }
       - name: Install
         # npm ci needs a committed package-lock.json. Until the first lockfile is committed, fall
@@ -60,12 +61,12 @@ jobs:
       TW_MAINNET_RPC_URL: ${{ vars.TW_MAINNET_RPC_URL || 'https://mainnet.sorobanrpc.com' }}
       TW_WASM_SRC_DIR: ${{ github.workspace }}/.tw-wasm-cache
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install the Rust toolchain pinned in contracts/rust-toolchain.toml
         run: |
           rustup toolchain install || rustup show
           rustup target list --installed
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -73,7 +74,7 @@ jobs:
             contracts/target
           key: cargo-${{ runner.os }}-${{ hashFiles('contracts/Cargo.lock', 'contracts/rust-toolchain.toml') }}
       - name: Cache Trustless Work Wasm (content-addressed by SHA256SUMS)
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .tw-wasm-cache
           key: tw-wasm-${{ hashFiles('contracts/third_party/tw-wasm/SHA256SUMS') }}

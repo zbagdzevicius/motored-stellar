@@ -1,4 +1,4 @@
-// Small byte helpers. Node >= 20 only (node:crypto); no other dependencies.
+// Small byte helpers. Node >= 22.12 (node:crypto); no other dependencies.
 import { createHash, createHmac, randomBytes } from "node:crypto";
 
 /** Concatenates byte arrays. */
