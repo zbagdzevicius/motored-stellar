@@ -46,18 +46,25 @@ marketplace plugs in, there is a small typed port (`OrderSource`, `DeliveryOracl
   buyer and the fees topped up). The delivered event came from a mock oracle, not a carrier. Every
   tx is linked in
   [docs/testnet-proofs.md](docs/testnet-proofs.md#run-5-silent-buyer-and-buyer-contest-from-this-repositorys-scripts-28-oct-2026-2208-to-2211-utc).
+  Run 6, 29 Oct 2026, on the same deployment (`npm run testnet:refusals`): four refused payouts
+  landed on the ledger as **failed transactions** carrying the guard's own error code, each
+  followed by the legitimate settlement of the same escrow: a release with a wrong fee address
+  (`BadFeeAddr` = 15), a seller payout with no delivery claim (`NoClaim` = 8), a break-glass payout
+  to the seller (`NotWholeToBuyer` = 13) and a seller payout while the buyer's contest stands
+  (`Contested` = 25). Links in
+  [docs/testnet-proofs.md](docs/testnet-proofs.md#run-6-refusals-landed-as-failed-transactions-29-oct-2026-0702-to-0705-utc).
   Testnet resets erase these entries; the runs are reproducible with `npm run testnet:keys`,
-  `testnet:deploy`, `testnet:e2e` and `testnet:e2e-claims`, and are re-run and re-logged after any reset.
+  `testnet:deploy`, `testnet:e2e`, `testnet:e2e-claims` and `testnet:refusals`, and are re-run and re-logged after any reset.
 - **Provenance:** the guard and registry were developed in a private lab workspace (lab runs 1 to 3
   on 24 Oct 2026, built from the lab crate `lab-guard`, so their Wasm hashes differ from this
   repository's build) and moved here with the same logic for run 4 on 28 Oct 2026. The initial
   published history (pushed 29 Oct 2026) ends at the tag `pre-award-baseline`; diff any billed deliverable against that tag.
 - **Tests:** 76 Rust contract tests (guard 68, claim registry 8) and 382 TypeScript tests passed
-  locally on 27 Oct 2026, and 388 TypeScript tests (with the run-5 helpers) on 29 Oct 2026; CI run links will be logged in [docs/verification.md](docs/verification.md)
+  locally on 27 Oct 2026, and 388 TypeScript tests (with the run-5 helpers) and then 391 (with the run-6 helpers) on 29 Oct 2026; CI run links will be logged in [docs/verification.md](docs/verification.md)
   after the first push.
 - **Not yet done (planned, see the status table below):** runs with Circle's testnet EURC; live Privy, Stellar Wallets Kit and Bridge
-  sandbox runs; refused paths as landed failed transactions (today they are unit tests plus
-  enforce-mode simulations); guard and registry Wasm verified on stellar.expert from a tagged
+  sandbox runs; the remaining refused paths as landed failed transactions (four are landed in run 6;
+  the others are unit tests plus enforce-mode simulations); guard and registry Wasm verified on stellar.expert from a tagged
   commit; a fired test alert; the first tagged release.
 
 ## The order flow
@@ -123,7 +130,7 @@ can do what with which key: [docs/trust-model.md](docs/trust-model.md).
 | [`packages/reconciler`](packages/reconciler) | 15-minute reconciliation, daily pass/fail report, the on-chain release metric | TypeScript |
 | [`scripts`](scripts) | Testnet keys (runtime only), deploy, end-to-end run, metric CLI, public claim re-check, `check-secrets.sh`, docs lint | TypeScript, bash |
 | [`examples/order-flow`](examples/order-flow) | One order through every port, in memory; `--testnet` hands off to the testnet run | TypeScript |
-| [`docs`](docs) | Architecture, trust and threat models, leaf format, metric, integration guide, verification log, testnet proofs | Markdown |
+| [`docs`](docs) | Architecture (incl. the [SCF #46 architecture](docs/scf-46-architecture.md)), trust and threat models, leaf format, metric, integration guide, verification log, testnet proofs | Markdown |
 
 ## Quickstart
 
@@ -176,7 +183,7 @@ imports, or testnet tx hashes mapped to order references in [docs/testnet-proofs
 | D3 | Order system on the escrow (orders, ledger and reconciliation, payouts, disputes and refunds, notifications) | Rules only: [`packages/escrow/src/fees.ts`](packages/escrow/src/fees.ts); `OrderSource`, `DeliveryOracle`, `LedgerSource` ports | Fee, cap, rounding and refund rules with tests | Private marketplace wiring |
 | D4 | Checkout on the EURC rail, end-to-end test | [`examples/order-flow`](examples/order-flow), [`scripts/testnet/e2e.ts`](scripts/testnet/e2e.ts), [`scripts/testnet/e2e-claims.ts`](scripts/testnet/e2e-claims.ts) | In-memory flow and the scripted testnet run | Private checkout UI; end-to-end run log appended to testnet-proofs.md |
 | D5 | Bridge on-ramp and off-ramp in sandbox | [`packages/ramps`](packages/ramps) | Offline unit tests | Sandbox runs |
-| D6 | Guard and claim registry: production hardening, claims from live DPD tracking | [`contracts/guard`](contracts/guard), [`contracts/claim-registry`](contracts/claim-registry), [`packages/claims`](packages/claims), [`packages/escrow/src/release-service.ts`](packages/escrow/src/release-service.ts) | Guard v0.8 and registry; lab-proven (3 runs) and run 4 | Refused paths as landed failed txs; key-rotation and migration drill; `Anchored` event; live TTL check; Wasm verified on stellar.expert |
+| D6 | Guard and claim registry: production hardening, claims from live DPD tracking | [`contracts/guard`](contracts/guard), [`contracts/claim-registry`](contracts/claim-registry), [`packages/claims`](packages/claims), [`packages/escrow/src/release-service.ts`](packages/escrow/src/release-service.ts) | Guard v0.8 and registry; lab-proven (3 runs) and run 4 | The remaining refused paths as landed failed txs (four landed in run 6); key-rotation and migration drill; `Anchored` event; live TTL check; Wasm verified on stellar.expert |
 | D7 | Threat model and monitoring | [`docs/threat-model.md`](docs/threat-model.md), [`docs/trust-model.md`](docs/trust-model.md) | Written | Sections for Bridge, sanctions, the wallet and checkout integration and order-system races; alert policies; a fired test alert |
 | D8 | Testnet hardening from pilot sessions, Polish locale | Failure-state tests land here | None | Billed |
 | D9 | Escrow operations console | Private | None | Billed |
@@ -210,6 +217,9 @@ package README.
 
 ## Evidence
 
+- [docs/scf-46-architecture.md](docs/scf-46-architecture.md): the architecture document for the SCF #46
+  Integration Track submission (components, contract interfaces, keys, failure modes, budget and
+  tranche mapping, open partner questions). Testnet only, unaudited.
 - [docs/testnet-proofs.md](docs/testnet-proofs.md): dated testnet contract IDs and transaction
   hashes with stellar.expert links.
 - [docs/verification.md](docs/verification.md): unit-test results, fees and instruction counts per
