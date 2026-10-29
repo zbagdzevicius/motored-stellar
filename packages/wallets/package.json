@@ -1,0 +1,48 @@
+{
+  "name": "@motored-stellar/wallets",
+  "version": "0.8.0",
+  "description": "Wallet connector layer for Stellar: a WalletProvider port with a Privy embedded-wallet adapter (raw-hash signing), a Stellar Wallets Kit adapter and a local KeypairWallet for tests and demos (SCF D2).",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@stellar/stellar-sdk": "14.6.1"
+  },
+  "peerDependencies": {
+    "@creit.tech/stellar-wallets-kit": "^2.7.1",
+    "@privy-io/react-auth": "^3.51.0"
+  },
+  "peerDependenciesMeta": {
+    "@creit.tech/stellar-wallets-kit": {
+      "optional": true
+    },
+    "@privy-io/react-auth": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "tweetnacl": "^1.0.3",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

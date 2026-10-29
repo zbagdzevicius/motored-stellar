@@ -1,0 +1,37 @@
+{
+  "name": "@motored-stellar/eurc",
+  "version": "0.8.0",
+  "description": "EURC on Stellar: asset constants, trustline checks, CAP-33 sponsored accounts and trustlines, and an allowlisted fee-bump service (SCF D2).",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "demo:standin": "tsx scripts/standin-demo.ts"
+  },
+  "dependencies": {
+    "@stellar/stellar-sdk": "14.6.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}
