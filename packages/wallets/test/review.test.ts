@@ -11,7 +11,7 @@ describe('summarizeTransaction', () => {
     const summary = summarizeTransaction(tx);
 
     expect(summary.source).toBe(user);
-    expect(summary.hash).toBe(tx.hash().toString('hex'));
+    expect(summary.hash).toBe(Buffer.from(tx.hash()).toString('hex'));
     expect(summary.operations).toEqual([
       { type: 'invokeHostFunction', contractId: ESCROW_ID, function: 'fund_escrow', args: [user, '100000000'] },
     ]);

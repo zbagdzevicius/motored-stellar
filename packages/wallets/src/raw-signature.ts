@@ -104,7 +104,7 @@ export function hasValidSignatureFrom(tx: Transaction | FeeBumpTransaction, publ
   const hint = kp.signatureHint();
   const txHash = tx.hash();
   return tx.signatures.some(
-    (ds) => Buffer.from(ds.hint()).equals(hint) && kp.verify(txHash, Buffer.from(ds.signature())),
+    (ds) => Buffer.from(ds.hint.value).equals(hint) && kp.verify(txHash, Buffer.from(ds.signature.value)),
   );
 }
 
@@ -126,24 +126,24 @@ export function buildAuthEntryPreimage(
   entry: xdr.SorobanAuthorizationEntry,
   networkPassphrase: string,
 ): xdr.HashIdPreimage {
-  const credentials = entry.credentials();
-  if (credentials.switch().value !== xdr.SorobanCredentialsType.sorobanCredentialsAddress().value) {
+  const credentials = entry.credentials;
+  if (credentials.type !== 'sorobanCredentialsAddress') {
     throw new WalletError('UNSUPPORTED', 'auth entry uses source-account credentials and needs no separate signature');
   }
-  const addr = credentials.address();
+  const addr = credentials.address;
   return xdr.HashIdPreimage.envelopeTypeSorobanAuthorization(
     new xdr.HashIdPreimageSorobanAuthorization({
       networkId: hash(Buffer.from(networkPassphrase)),
-      nonce: addr.nonce(),
-      invocation: entry.rootInvocation(),
-      signatureExpirationLedger: addr.signatureExpirationLedger(),
+      nonce: addr.nonce,
+      invocation: entry.rootInvocation,
+      signatureExpirationLedger: addr.signatureExpirationLedger,
     }),
   );
 }
 
 /** The 32 bytes an auth-entry signer signs: SHA-256 of the preimage XDR. */
 export function authEntryPayload(preimage: xdr.HashIdPreimage): Uint8Array {
-  return Uint8Array.from(hash(preimage.toXDR()));
+  return Uint8Array.from(hash(preimage.toXdr()));
 }
 
 /** Minimal shape needed to sign an auth entry; satisfied by every `WalletProvider`. */
@@ -169,9 +169,8 @@ export async function authorizeEntryWithWallet(
   validUntilLedgerSeq: number,
 ): Promise<xdr.SorobanAuthorizationEntry> {
   const publicKey = await wallet.getAddress();
-  // TODO(verify): the `{ signature, publicKey }` callback result is the form in
-  // stellar-base 15 (lib/auth.js); confirm stellar-sdk 14.6.1 bundles a base
-  // version that accepts it rather than only a bare signature buffer.
+  // The `{ signature, publicKey }` callback result is part of stellar-sdk 17's
+  // `SigningCallback` type; test/raw-signature.test.ts exercises it end to end.
   return authorizeEntry(
     entry,
     async (preimage: xdr.HashIdPreimage) => ({

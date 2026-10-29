@@ -62,13 +62,13 @@ export class RpcChainReader implements ChainReader {
       new xdr.LedgerKeyContractData({
         contract: new Address(escrowId).toScAddress(),
         key: xdr.ScVal.scvVec([xdr.ScVal.scvSymbol("Escrow")]),
-        durability: xdr.ContractDataDurability.persistent(),
+        durability: xdr.ContractDataDurability.persistent,
       }),
     );
     const res = await this.server.getLedgerEntries(key);
     const entry = res.entries[0];
     if (!entry) return null;
-    return escrowFromNative(scValToNative(entry.val.contractData().val()));
+    return escrowFromNative(scValToNative(xdr.expectUnionVariant(entry.val, "contractData").contractData.val));
   }
 
   async getBalance(holder: string): Promise<EurcBalance> {
@@ -80,13 +80,13 @@ export class RpcChainReader implements ChainReader {
       new xdr.LedgerKeyContractData({
         contract: new Address(this.opts.eurcSac).toScAddress(),
         key: xdr.ScVal.scvVec([xdr.ScVal.scvSymbol("Balance"), new Address(holder).toScVal()]),
-        durability: xdr.ContractDataDurability.persistent(),
+        durability: xdr.ContractDataDurability.persistent,
       }),
     );
     const res = await this.server.getLedgerEntries(key);
     const entry = res.entries[0];
     if (!entry) return { amount: 0n, authorized: true };
-    const v = scValToNative(entry.val.contractData().val()) as { amount: bigint; authorized: boolean };
+    const v = scValToNative(xdr.expectUnionVariant(entry.val, "contractData").contractData.val) as { amount: bigint; authorized: boolean };
     return { amount: BigInt(v.amount), authorized: Boolean(v.authorized) };
   }
 
@@ -155,7 +155,7 @@ export class RpcChainReader implements ChainReader {
     const res = await this.server.getLedgerEntries(key);
     const entry = res.entries[0];
     if (!entry) return { exists: false, authorized: false };
-    const flags = entry.val.trustLine().flags();
+    const flags = xdr.expectUnionVariant(entry.val, "trustline").trustLine.flags;
     return { exists: true, authorized: (flags & AUTHORIZED_FLAG) === AUTHORIZED_FLAG };
   }
 

@@ -125,7 +125,7 @@ describe('PrivyWalletProvider', () => {
     expect(signRawHash).toHaveBeenCalledWith({
       address: user.publicKey(),
       chainType: 'stellar',
-      hash: `0x${tx.hash().toString('hex')}`,
+      hash: `0x${Buffer.from(tx.hash()).toString('hex')}`,
     });
     expect(hasValidSignatureFrom(signed, user.publicKey())).toBe(true);
   });

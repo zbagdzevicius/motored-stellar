@@ -43,11 +43,11 @@ describe("TTL upkeep", () => {
     expect(keys.map((k) => k.toXDR("base64"))).toEqual(expected.map((k) => k.toXDR("base64")));
 
     // Registry root key is Key::Root(u64) = vec[symbol("Root"), u64].
-    const rk = registryRootKey(registry, 5n).contractData();
-    expect(scValToNative(rk.key())).toEqual(["Root", 5n]);
-    expect(rk.durability()).toEqual(xdr.ContractDataDurability.persistent());
+    const rk = xdr.expectUnionVariant(registryRootKey(registry, 5n), "contractData").contractData;
+    expect(scValToNative(rk.key)).toEqual(["Root", 5n]);
+    expect(rk.durability).toEqual(xdr.ContractDataDurability.persistent);
     // Guard registration key is DK::Esc(Address), as read on testnet by the lab.
-    expect(scValToNative(guardRegistrationKey(guard, e1).contractData().key())).toEqual(["Esc", e1]);
+    expect(scValToNative(xdr.expectUnionVariant(guardRegistrationKey(guard, e1), "contractData").contractData.key)).toEqual(["Esc", e1]);
   });
 
   it("puts the keys into a read-only footprint of one ExtendFootprintTTL op", () => {
@@ -60,9 +60,10 @@ describe("TTL upkeep", () => {
     });
     expect(tx.operations).toHaveLength(1);
     expect(tx.operations[0]!.type).toBe("extendFootprintTtl");
-    const fp = tx.toEnvelope().v1().tx().ext().sorobanData().resources().footprint();
-    expect(fp.readOnly().map((k) => k.toXDR("base64"))).toEqual(keys.map((k) => k.toXDR("base64")));
-    expect(fp.readWrite()).toHaveLength(0);
+    const env = xdr.expectUnionVariant(tx.toEnvelope(), "envelopeTypeTx");
+    const fp = xdr.expectUnionVariant(env.v1.tx.ext, "sorobanData").sorobanData.resources.footprint;
+    expect(fp.readOnly.map((k) => k.toXdr("base64"))).toEqual(keys.map((k) => k.toXdr("base64")));
+    expect(fp.readWrite).toHaveLength(0);
   });
 
   it("chunks large key sets", () => {
@@ -77,7 +78,7 @@ describe("claim ScVal", () => {
       orderRef: random(32), parcelsCommit: random(32), carrierEventRef: random(32),
       deliveredAt: 1n, batchId: 2n, proof: [random(32)], index: 1,
     });
-    const keys = v.map()!.map((e) => e.key().sym().toString());
+    const keys = xdr.expectUnionVariant(v, "scvMap").map!.map((e) => xdr.expectUnionVariant(e.key, "scvSymbol").sym.toString());
     expect(keys).toEqual(["batch_id", "carrier_event_ref", "delivered_at", "index", "order_ref", "parcels_commit", "proof"]);
   });
 });

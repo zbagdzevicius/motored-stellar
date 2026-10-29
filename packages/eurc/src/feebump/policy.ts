@@ -39,6 +39,7 @@ import {
   FeeBumpTransaction,
   StrKey,
   type Operation,
+  type OperationRecord,
   type Transaction,
 } from "@stellar/stellar-sdk";
 import type { Clock, WalletRegistry } from "../ports.js";
@@ -222,8 +223,8 @@ export class FeeBumpPolicy {
     }
   }
 
-  private sponsoredTrustline(ops: readonly Operation[], source: string): PolicyDecision {
-    const [begin, trust, end] = ops as [Operation, Operation, Operation];
+  private sponsoredTrustline(ops: readonly OperationRecord[], source: string): PolicyDecision {
+    const [begin, trust, end] = ops as [OperationRecord, OperationRecord, OperationRecord];
     if (begin.type !== "beginSponsoringFutureReserves" || trust.type !== "changeTrust" || end.type !== "endSponsoringFutureReserves") {
       return reject("operation-count", "3 operations that are not a sponsored-trustline sandwich");
     }
@@ -242,7 +243,13 @@ export class FeeBumpPolicy {
     if (!ramp || op.destination !== ramp.address) return reject("destination-not-allowed");
     const memo = inner.memo;
     if (ramp.memo) {
-      const value = memo.value === null ? "" : Buffer.isBuffer(memo.value) ? memo.value.toString("hex") : String(memo.value);
+      // stellar-sdk 17 decodes text memos as bytes too: compare text as UTF-8, hash/return as hex.
+      const value =
+        memo.value === null
+          ? ""
+          : memo.value instanceof Uint8Array
+            ? Buffer.from(memo.value).toString(memo.type === "text" ? "utf8" : "hex")
+            : String(memo.value);
       if (memo.type !== ramp.memo.type || value !== ramp.memo.value) return reject("memo-mismatch");
     } else if (memo.type !== "none") {
       return reject("memo-mismatch", "ramp destination takes no memo");

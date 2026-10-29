@@ -37,7 +37,7 @@ describe("fee-bump service", () => {
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.feeBump.feeSource).toBe(w.sponsor.publicKey());
-    expect(r.feeBump.innerTransaction.hash().equals(inner.hash())).toBe(true);
+    expect(Buffer.from(r.feeBump.innerTransaction.hash()).equals(inner.hash())).toBe(true);
     expect(hasValidSignatureFrom(r.feeBump, w.sponsor.publicKey())).toBe(true);
     expect(w.submitter.submitted).toEqual([r.feeBump]);
     expect(w.submitter.simulated).toHaveLength(0); // classic: no simulation

@@ -82,6 +82,5 @@ Both are optional; the adapters are typed structurally and never import them.
 - TODO(verify): what each kit module's `signAuthEntry` takes and returns (base64 preimage in, base64 signature out is assumed).
 - TODO(verify): Privy user ID format in examples varies between `did:privy:...` and `privy:did:...`; this package passes it through unchanged.
 - TODO(verify): Privy create-wallet idempotency is sent as the `idempotency_key` body field listed in the API reference.
-- TODO(verify): `authorizeEntry`'s `{ signature, publicKey }` callback result in the stellar-base version bundled with `@stellar/stellar-sdk` 14.6.1.
 
 License: Apache-2.0.

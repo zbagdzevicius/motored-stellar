@@ -40,11 +40,11 @@ export function addressAmountMap(entries: ReadonlyArray<readonly [string, bigint
   return xdr.ScVal.scvMap(
     entries
       .map(([a, v]) => new xdr.ScMapEntry({ key: addr(a), val: i128(v) }))
-      .sort((x, y) => Buffer.compare(x.key().toXDR(), y.key().toXDR())),
+      .sort((x, y) => Buffer.compare(x.key.toXdr(), y.key.toXdr())),
   );
 }
 
 /** Base64 XDR of a symbol, the form RPC `getEvents` topic filters take. */
-export const symbolTopic = (s: string): string => sym(s).toXDR('base64');
+export const symbolTopic = (s: string): string => sym(s).toXdr('base64');
 /** Base64 XDR of an address ScVal, for topic filters. */
-export const addressTopic = (a: string): string => addr(a).toXDR('base64');
+export const addressTopic = (a: string): string => addr(a).toXdr('base64');

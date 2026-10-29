@@ -102,7 +102,7 @@ export class WalletsKitProvider implements WalletProvider {
     } catch (cause) {
       throw new WalletError('PROVIDER_ERROR', 'wallet returned an unreadable transaction', { cause });
     }
-    if (signed instanceof FeeBumpTransaction || !signed.hash().equals(tx.hash())) {
+    if (signed instanceof FeeBumpTransaction || !Buffer.from(signed.hash()).equals(tx.hash())) {
       throw new WalletError('TX_TAMPERED', 'wallet returned a different transaction than it was asked to sign');
     }
     if (!hasValidSignatureFrom(signed, address)) {

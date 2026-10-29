@@ -59,6 +59,6 @@ export function hasValidSignatureFrom(tx: Transaction | FeeBumpTransaction, publ
   const hint = kp.signatureHint();
   const h = tx.hash();
   return tx.signatures.some(
-    (d) => Buffer.from(d.hint()).equals(Buffer.from(hint)) && kp.verify(h, Buffer.from(d.signature())),
+    (d) => Buffer.from(d.hint.value).equals(Buffer.from(hint)) && kp.verify(h, Buffer.from(d.signature.value)),
   );
 }

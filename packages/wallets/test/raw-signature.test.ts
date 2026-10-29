@@ -8,6 +8,7 @@ import {
   authorizeInvocation,
   hash,
   scValToNative,
+  xdr,
 } from '@stellar/stellar-sdk';
 
 import {
@@ -42,8 +43,8 @@ describe('raw-hash signing -> DecoratedSignature', () => {
     const ds = decoratedSignatureFromRaw(user.publicKey(), new Uint8Array(64));
     const rawPk = StrKey.decodeEd25519PublicKey(user.publicKey());
 
-    expect(Buffer.from(ds.hint()).equals(rawPk.subarray(28))).toBe(true);
-    expect(Buffer.from(ds.hint()).equals(user.signatureHint())).toBe(true);
+    expect(Buffer.from(ds.hint.value).equals(rawPk.subarray(28))).toBe(true);
+    expect(Buffer.from(ds.hint.value).equals(user.signatureHint())).toBe(true);
   });
 
   it('attaches a signature identical to tx.sign(keypair) and survives an XDR round trip', () => {
@@ -116,27 +117,27 @@ describe('auth-entry signing', () => {
   it('builds the same preimage the network signs and authorizes an entry through a raw-hash wallet', async () => {
     const user = Keypair.random();
     // Start from an entry for the user's address (signed once by the key directly).
-    const seed = await authorizeInvocation(user, 1_000, sampleInvocation(), user.publicKey(), NET);
+    const seed = await authorizeInvocation({ signer: user, validUntilLedgerSeq: 1_000, invocation: sampleInvocation(), publicKey: user.publicKey(), networkPassphrase: NET, authV2: false });
     const wallet = new RawHashWallet({
       address: user.publicKey(),
       signRawHash: async ({ hash: h }) => naclRawSign(user, h),
     });
 
     const entry = await authorizeEntryWithWallet(seed, wallet, 5_000);
-    const creds = entry.credentials().address();
-    expect(creds.signatureExpirationLedger()).toBe(5_000);
+    const creds = xdr.expectUnionVariant(entry.credentials, 'sorobanCredentialsAddress').address;
+    expect(creds.signatureExpirationLedger).toBe(5_000);
 
     const payload = authEntryPayload(buildAuthEntryPreimage(entry, NET));
-    const [sig] = scValToNative(creds.signature()) as Array<{ public_key: Buffer; signature: Buffer }>;
+    const [sig] = scValToNative(creds.signature) as Array<{ public_key: Buffer; signature: Buffer }>;
     expect(sig).toBeDefined();
     expect(StrKey.encodeEd25519PublicKey(Buffer.from(sig!.public_key))).toBe(user.publicKey());
     expect(user.verify(Buffer.from(payload), Buffer.from(sig!.signature))).toBe(true);
-    expect(Buffer.from(payload).equals(hash(buildAuthEntryPreimage(entry, NET).toXDR()))).toBe(true);
+    expect(Buffer.from(payload).equals(hash(buildAuthEntryPreimage(entry, NET).toXdr()))).toBe(true);
   });
 
   it('is rejected when the wallet signs with a key that does not own the address', async () => {
     const user = Keypair.random();
-    const seed = await authorizeInvocation(user, 1_000, sampleInvocation(), user.publicKey(), NET);
+    const seed = await authorizeInvocation({ signer: user, validUntilLedgerSeq: 1_000, invocation: sampleInvocation(), publicKey: user.publicKey(), networkPassphrase: NET, authV2: false });
     const impostor = new KeypairWallet(Keypair.random());
     const lying = { networkPassphrase: NET, getAddress: async () => user.publicKey(), signAuthEntry: impostor.signAuthEntry.bind(impostor) };
 

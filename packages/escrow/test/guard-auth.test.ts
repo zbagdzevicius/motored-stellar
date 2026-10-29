@@ -30,13 +30,13 @@ const TOKEN = 'CCBFC27MDMJW3N2RPGXWOIDIAN57IE5E4QFY7HCQSSPOBVOOCGOL563R';
 const sha = (b: Uint8Array) => createHash('sha256').update(b).digest();
 
 /** An unsigned address-credential entry, as record-mode simulation returns it. */
-function guardEntry(address: string, contract: string, fn: string, args: xdr.ScVal[], nonce = 7n): xdr.SorobanAuthorizationEntry {
+function guardEntry(address: string, contract: string, fn: string, args: xdr.ScVal[], nonce = 7n, signatureExpirationLedger = 0): xdr.SorobanAuthorizationEntry {
   return new xdr.SorobanAuthorizationEntry({
     credentials: xdr.SorobanCredentials.sorobanCredentialsAddress(
       new xdr.SorobanAddressCredentials({
         address: new Address(address).toScAddress(),
         nonce: xdr.Int64.fromString(nonce.toString()),
-        signatureExpirationLedger: 0,
+        signatureExpirationLedger,
         signature: xdr.ScVal.scvVoid(),
       }),
     ),
@@ -49,17 +49,22 @@ function guardEntry(address: string, contract: string, fn: string, args: xdr.ScV
   });
 }
 
+const symOf = (x: xdr.ScVal): string => xdr.expectUnionVariant(x, 'scvSymbol').sym.toString();
+const addressCreds = (e: xdr.SorobanAuthorizationEntry) => xdr.expectUnionVariant(e.credentials, 'sorobanCredentialsAddress').address;
+
 /** Branch name and raw signature out of a signed entry's GuardSig. */
 function readGuardSig(e: xdr.SorobanAuthorizationEntry): { branch: string; sig: Buffer; claim?: xdr.ScVal } {
-  const v = e.credentials().address().signature().vec();
+  const sigVal = xdr.expectUnionVariant(e.credentials, 'sorobanCredentialsAddress').address.signature;
+  const v = xdr.expectUnionVariant(sigVal, 'scvVec').vec;
   if (!v || v.length !== 2) throw new Error('GuardSig must be a 2-element vec');
-  const branch = v[0]!.sym().toString();
+  const branch = xdr.expectUnionVariant(v[0]!, 'scvSymbol').sym.toString();
+  const bytesOf = (x: xdr.ScVal) => Buffer.from(xdr.expectUnionVariant(x, 'scvBytes').bytes.value);
   if (branch === 'ResolveSeller') {
-    const fields = v[1]!.map() ?? [];
-    const get = (k: string) => fields.find((f) => f.key().sym().toString() === k)!.val();
-    return { branch, sig: get('sig').bytes(), claim: get('claim') };
+    const fields = xdr.expectUnionVariant(v[1]!, 'scvMap').map ?? [];
+    const get = (k: string) => fields.find((f) => symOf(f.key) === k)!.val;
+    return { branch, sig: bytesOf(get('sig')), claim: get('claim') };
   }
-  return { branch, sig: v[1]!.bytes() };
+  return { branch, sig: bytesOf(v[1]!) };
 }
 
 function claim(seed: number, escrow = ESCROW): DeliveryClaim & { root: Buffer } {
@@ -100,7 +105,7 @@ describe('delivery claim leaf and Merkle path', () => {
   });
 
   it('encodes the Claim struct with carrier_event_ref and sorted keys', () => {
-    const keys = (claimToScVal(claim(3)).map() ?? []).map((e) => e.key().sym().toString());
+    const keys = (xdr.expectUnionVariant(claimToScVal(claim(3)), 'scvMap').map ?? []).map((e) => symOf(e.key));
     expect(keys).toEqual(['batch_id', 'carrier_event_ref', 'delivered_at', 'index', 'order_ref', 'parcels_commit', 'proof']);
   });
 });
@@ -118,8 +123,8 @@ describe('signGuardEntries', () => {
       branch: 'Release',
       expect: { contractId: ESCROW, fn: 'release_funds' },
     });
-    const creds = signed!.credentials().address();
-    expect(creds.signatureExpirationLedger()).toBe(1_234);
+    const creds = addressCreds(signed!);
+    expect(creds.signatureExpirationLedger).toBe(1_234);
     const { branch, sig } = readGuardSig(signed!);
     expect(branch).toBe('Release');
     expect(sig.length).toBe(64);
@@ -135,8 +140,7 @@ describe('signGuardEntries', () => {
     const [signed] = await signGuardEntries([guardEntry(GUARD, ESCROW, 'release_funds', args)], {
       guardContractId: GUARD, networkPassphrase: NET, validUntilLedger: 10, key: new KeypairSigner(release), branch: 'Release',
     });
-    const forged = guardEntry(GUARD, other, 'release_funds', args);
-    forged.credentials().address().signatureExpirationLedger(10);
+    const forged = guardEntry(GUARD, other, 'release_funds', args, 7n, 10);
     expect(Keypair.fromPublicKey(release.publicKey()).verify(authorizationPayload(forged, NET), readGuardSig(signed!).sig)).toBe(false);
   });
 
@@ -205,9 +209,9 @@ describe('ReleaseService over an in-memory RPC', () => {
     expect(rpc.sent).toHaveLength(1);
     expect(rpc.simulated.map((s) => s.authMode)).toEqual(['record', 'enforce']);
     const op = (rpc.sent[0] as unknown as { operations: Operation.InvokeHostFunction[] }).operations[0]!;
-    const call = op.func.invokeContract();
-    expect(call.args().map((a) => Address.fromScVal(a).toString())).toEqual([GUARD, twFee]);
-    expect(op.auth![0]!.credentials().address().signatureExpirationLedger()).toBe(700);
+    const call = xdr.expectUnionVariant(op.func, 'hostFunctionTypeInvokeContract').invokeContract;
+    expect(call.args.map((a) => Address.fromScVal(a).toString())).toEqual([GUARD, twFee]);
+    expect(addressCreds(op.auth![0]!).signatureExpirationLedger).toBe(700);
   });
 
   it('omits the fee-address argument on the hardcoded-fee lineage', () => {

@@ -1,7 +1,7 @@
 // Funding precheck (guard.check_escrow + get_escrow re-read) and the on-chain
 // deployer call shape, over the in-memory RPC.
 
-import { Keypair, Networks, scValToNative } from '@stellar/stellar-sdk';
+import { Keypair, Networks, scValToNative, xdr } from '@stellar/stellar-sdk';
 import { describe, expect, it } from 'vitest';
 import {
   deployerCall,
@@ -75,8 +75,8 @@ describe('deployerCall', () => {
     expect(scValToNative(call.args[0]!)).toBe(platform);
     expect(Buffer.from(scValToNative(call.args[1]!) as Uint8Array).toString('hex')).toBe(TW_TESTNET_WASM_HASH);
     expect(scValToNative(call.args[3]!)).toBe('initialize_escrow');
-    expect(call.args[4]!.vec()![0]!.toXDR('base64')).toBe(escrowToScVal(escrow).toXDR('base64'));
-    expect(call.args[5]!.vec()).toHaveLength(0);
+    expect(xdr.expectUnionVariant(call.args[4]!, 'scvVec').vec![0]!.toXdr('base64')).toBe(escrowToScVal(escrow).toXdr('base64'));
+    expect(xdr.expectUnionVariant(call.args[5]!, 'scvVec').vec).toHaveLength(0);
   });
 
   it('refuses an escrow with an empty milestone status', () => {

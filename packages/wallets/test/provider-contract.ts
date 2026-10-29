@@ -37,7 +37,7 @@ export function describeWalletProviderContract(name: string, make: () => Promise
 
       expect(signed).not.toBe(tx);
       expect(tx.signatures).toHaveLength(0);
-      expect(signed.hash().equals(tx.hash())).toBe(true);
+      expect(Buffer.from(signed.hash()).equals(tx.hash())).toBe(true);
       expect(hasValidSignatureFrom(signed, address)).toBe(true);
     });
 

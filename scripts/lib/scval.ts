@@ -36,7 +36,7 @@ export function distributions(pairs: Array<[string, bigint]>): xdr.ScVal {
   return xdr.ScVal.scvMap(
     pairs
       .map(([a, v]) => new xdr.ScMapEntry({ key: addr(a), val: i128(v) }))
-      .sort((x, y) => Buffer.compare(x.key().toXDR(), y.key().toXDR())),
+      .sort((x, y) => Buffer.compare(x.key.toXdr(), y.key.toXdr())),
   );
 }
 

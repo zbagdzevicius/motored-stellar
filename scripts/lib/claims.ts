@@ -55,7 +55,7 @@ function check32(name: string, b: Buffer): void {
 }
 
 /** XDR of ScVal::Address(E): what the guard appends with `escrow.to_xdr(env)`. */
-export const addressXdr = (escrow: string): Buffer => new Address(escrow).toScVal().toXDR();
+export const addressXdr = (escrow: string): Buffer => Buffer.from(new Address(escrow).toScVal().toXdr());
 
 export function claimLeaf(escrow: string, c: DeliveryClaim): Buffer {
   check32('order_ref', c.orderRef);

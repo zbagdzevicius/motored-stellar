@@ -31,14 +31,9 @@ export class RpcSubmitter implements Submitter {
   }
 
   async simulate(tx: Transaction, authMode?: AuthMode): Promise<SimulationOutcome> {
-    // The third argument selects the auth mode (enforce / record / record_allow_nonroot).
-    // TODO(verify): signature of simulateTransaction's authMode parameter in @stellar/stellar-sdk 14.6.1.
-    const simulate = this.server.simulateTransaction.bind(this.server) as (
-      t: Transaction,
-      addl?: unknown,
-      mode?: AuthMode,
-    ) => Promise<rpc.Api.SimulateTransactionResponse>;
-    const sim = await simulate(tx, undefined, authMode);
+    // The third argument selects the auth mode (enforce / record / record_allow_nonroot);
+    // typed as rpc.Api.SimulationAuthMode in @stellar/stellar-sdk 17.
+    const sim = await this.server.simulateTransaction(tx, undefined, authMode);
     if (rpc.Api.isSimulationError(sim)) {
       return { ok: false, error: sim.error, contractErrorCode: contractErrorCode(sim.error) };
     }
@@ -67,7 +62,7 @@ export class RpcSubmitter implements Submitter {
           hash: r.hash,
           status: 'SUCCESS',
           returnValue: g.returnValue,
-          feeCharged: BigInt(g.resultXdr.feeCharged().toString()),
+          feeCharged: BigInt(g.resultXdr.feeCharged),
         };
       }
       return { hash: r.hash, status: 'FAILED' };
