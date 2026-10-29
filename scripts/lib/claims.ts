@@ -21,8 +21,8 @@ import { bytes, map, u32, u64, vec } from './scval.js';
 export const TAG_CLAIM_LEAF = 0x01;
 export const TAG_NODE = 0x02;
 /**
- * Padding leaf tag: pad_leaf(i) = sha256(0x03 || u32_be(i)), the rule Open Part
- * Passport and packages/claims (merkle.ts) use. Padding is a batch-builder
+ * Padding leaf tag: pad_leaf(i) = sha256(0x03 || u32_be(i)), the rule packages/claims
+ * (merkle.ts) uses. Padding is a batch-builder
  * choice: verification on-chain never sees it.
  */
 export const TAG_PAD = 0x03;
