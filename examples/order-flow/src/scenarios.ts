@@ -3,7 +3,8 @@
 // The order scenarios, written as a marketplace backend would drive them through
 // the ports. Each step names the on-chain call it stands for.
 //
-//   Scenario 1  buyer approves:  quote -> create -> precheck -> wallet funds ->
+//   Scenario 1  buyer approves:  quote -> create -> precheck -> wallet funds
+//               (escrow, plus shipping to the platform address outside it) ->
 //               paid -> register -> carrier delivered -> claim anchored ->
 //               buyer approves -> guarded release -> reconcile.
 //   Scenario 2a silent buyer:    ... claim anchored -> buyer silent -> payout
@@ -18,7 +19,7 @@ import * as claims from '@motored-stellar/claims';
 import * as escrow from '@motored-stellar/escrow';
 import * as recon from '@motored-stellar/reconciler';
 import { GuardAuthError, GuardError, GuardErrorCode, type Registration } from './guard-model.js';
-import { WalletSigner, balanceOf, buildWorld, mintEurc, sha256Hex, syncEscrowState, type World } from './world.js';
+import { WalletSigner, balanceOf, buildWorld, mintEurc, payShipping, sha256Hex, syncEscrowState, type World } from './world.js';
 
 export type Log = (line: string) => void;
 
@@ -38,6 +39,7 @@ export const DEFAULT_CART: Cart = { itemGrossCents: [18_000n], shippingCents: 1_
 
 export interface PlacedOrder {
   order: escrow.EscrowOrder;
+  shippingToPlatform: bigint;
   contractId: string;
   quote: escrow.EscrowQuote;
   buyer: WalletSigner;
@@ -48,13 +50,15 @@ export interface PlacedOrder {
 export interface OrderOutcome {
   contractId: string;
   amount: bigint;
+  /** Shipping the buyer paid to the platform address in the funding step, outside the escrow. */
+  shippingToPlatform: bigint;
   cardNet: bigint;
   platformFeeBps: bigint;
   /** EURC the seller received from the escrow. */
   sellerReceived: bigint;
   /** EURC the buyer received back (escrow refund plus platform top-up). */
   buyerRefunded: bigint;
-  /** Fees the platform account kept, net of any top-up it paid. */
+  /** What the platform account gained: fees and shipping, net of any top-up it paid. */
   platformNet: bigint;
   trustlessWorkFee: bigint;
   claimVerified?: boolean;
@@ -77,21 +81,28 @@ export async function placeAndFund(w: World, log: Log, cart: Cart = DEFAULT_CART
 
   // OrderSource: the marketplace's order system supplies the order. The amount
   // and the card-rail seller net use the same fee schedule as the card rail.
-  const amountCents = escrow.escrowAmountCents({ ...cart, referral: false });
+  // The escrow holds items + buyer fee; shipping (a DPD label Motored buys) is
+  // paid to the platform address in the funding step, outside the escrow.
+  const cents = escrow.orderAmountsCents({ ...cart, referral: false });
+  const shippingToPlatform = escrow.centsToUnits(cents.shippingToPlatformCents);
   const draft: escrow.EscrowOrder = {
     orderRef: randomBytes(32).toString('hex'),
     buyer: buyer.publicKey(),
     seller: seller.publicKey(),
-    amount: escrow.centsToUnits(amountCents),
-    cardNet: escrow.centsToUnits(escrow.cardNetCents(cart.itemGrossCents)),
+    amount: escrow.centsToUnits(cents.escrowCents),
+    cardNet: escrow.centsToUnits(cents.cardNetCents),
   };
   w.orders.add(draft);
   const order = await w.orders.getOrder(draft.orderRef);
   if (!order) throw new Error('order not found');
 
-  // Fee rules: platform_fee_bps makes the seller net at least the card rail's payout.
-  const quote = escrow.quoteEscrow(order);
-  log(`  order ${order.orderRef.slice(0, 8)}: escrow ${fmt(order.amount)}, card net ${fmt(order.cardNet)}, platform_fee ${quote.platformFeeBps} bps`);
+  // Fee rules: platform_fee_bps makes the seller net at least the card rail's payout,
+  // within the 1,000 bps cap planned for mainnet.
+  const quote = escrow.quoteEscrow({ ...order, shippingToPlatform }, { maxPlatformFeeBps: escrow.MAINNET_MAX_PLATFORM_FEE_BPS });
+  log(
+    `  order ${order.orderRef.slice(0, 8)}: escrow ${fmt(order.amount)}, shipping to platform ${fmt(shippingToPlatform)}, ` +
+      `card net ${fmt(order.cardNet)}, platform_fee ${quote.platformFeeBps} bps`,
+  );
 
   // Trustless Work: deploy and initialise one single-release escrow, guard in both roles.
   const { contractId } = await w.lifecycle.create(order);
@@ -114,19 +125,22 @@ export async function placeAndFund(w: World, log: Log, cart: Cart = DEFAULT_CART
   });
 
   // The buyer's EURC arrives (in production: SEPA through the ramp, or the buyer's own wallet).
-  mintEurc(w, buyer.publicKey(), order.amount);
+  mintEurc(w, buyer.publicKey(), order.amount + shippingToPlatform);
 
-  // WalletProvider: the buyer reviews the decoded transaction and signs fund_escrow.
+  // WalletProvider: the buyer reviews the decoded transactions and signs fund_escrow,
+  // then the shipping payment to the platform address (the next transaction in the
+  // buyer's sequence: a Soroban transaction holds one operation). Paid only when both land.
   await w.lifecycle.fund(contractId, buyer);
   const funding = await w.lifecycle.funding(contractId);
   if (!funding.paid) throw new Error(`order not paid: ${funding.flags.join(', ')}`);
+  if (shippingToPlatform > 0n) await payShipping(w, buyer, contractId, shippingToPlatform);
   ledgerUpdate(w, contractId, { status: 'funded' });
-  log(`  buyer wallet signed fund_escrow (${buyer.reviewed.length} reviewed signature); order paid`);
+  log(`  buyer wallet signed fund_escrow and the shipping payment (${buyer.reviewed.length} reviewed signatures); order paid`);
 
   // Permissionless register_escrow: buyer, seller and amount frozen; funded_at recorded.
   const registration = w.guard.registerEscrow(await w.api.getEscrow(contractId));
   log(`  guard.register_escrow: funded_at=${registration.fundedAt}`);
-  return { order, contractId, quote, buyer, seller, registration };
+  return { order, shippingToPlatform, contractId, quote, buyer, seller, registration };
 }
 
 /** DeliveryOracle -> claim -> hourly batch -> registry.anchor. Returns the guard-ready claim. */
@@ -273,6 +287,7 @@ export async function refundWithTopUp(w: World, log: Log, cart?: Cart): Promise<
   log(`  guarded resolve_dispute to the buyer landed ${exitTx.slice(0, 12)}...: ${fmt(refund.paidFromEscrow)} from the escrow`);
 
   // Refund top-up from the platform fee account: exactly the two fees the resolution withheld.
+  // Shipping was never in the escrow; whether it is refunded is Motored's call, as on the card rail.
   const topUpTx = sha256Hex(`topup/${exitTx}`);
   w.chain.transfer({ txHash: topUpTx, closedAt: w.clock.now(), from: w.keys.platform.publicKey(), to: p.order.buyer, amount: refund.topUp });
   ledgerUpdate(w, p.contractId, {
@@ -355,10 +370,11 @@ async function outcome(
   const result: OrderOutcome = {
     contractId: p.contractId,
     amount: p.order.amount,
+    shippingToPlatform: p.shippingToPlatform,
     cardNet: p.order.cardNet,
     platformFeeBps: p.quote.platformFeeBps,
     sellerReceived: await balanceOf(w, p.order.seller),
-    // The buyer was minted exactly the amount and spent it on funding.
+    // The buyer was minted exactly the amount plus shipping and spent both in the funding step.
     buyerRefunded: buyerNow,
     platformNet: (await balanceOf(w, w.keys.platform.publicKey())) - before.platform,
     trustlessWorkFee: (await balanceOf(w, w.trustlessWorkFee)) - before.tw,

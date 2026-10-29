@@ -35,6 +35,7 @@ it is exactly one of:
 | guard `contest(escrow, evidence)` | `escrow` is one of the source's escrows, `evidence` is 32 bytes |
 | sponsored EURC trustline | Begin (source = sponsor, sponsored = source), ChangeTrust(EURC, default limit), End |
 | classic EURC payment | to the source's stored ramp destination, with the ramp's memo |
+| classic EURC payment (shipping) | to the configured `platformAddress` (the guard's pinned platform address): the order's shipping, paid outside the escrow in the funding step |
 
 Soroban calls may carry only source-account authorisation. Anything else is
 rejected with a reason code (`destination-not-allowed`, `operation-not-allowed`,

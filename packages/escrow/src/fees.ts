@@ -11,9 +11,18 @@
 //   platform_fee_bps = floor((9970 * amount - 10000 * card_net) / amount)
 //
 // with `amount` and `card_net` in the same unit (7-decimal units on-chain).
-// Trustless Work's 0.3% comes out of the platform's share (buyer fee, shipping and
+// Trustless Work's 0.3% comes out of the platform's share (buyer fee and
 // commission). An order is eligible for the escrow rail only when the result is
-// between 0 and 9,900 (Trustless Work's cap).
+// between 0 and the guard's cap (`max_platform_fee_bps`, at most Trustless Work's
+// 9,900).
+//
+// Shipping is not in the escrow. Motored buys the DPD label, so the buyer pays
+// shipping straight to the pinned platform address as a plain EURC payment in
+// the funding step (`shippingToPlatform` on the quote; see `precheck.ts`
+// `buildShippingPaymentTransaction`). The escrow holds items plus the buyer fee
+// only, so its platform fee is at most the commission plus the buyer fee, under
+// the 1,000 bps cap planned for mainnet. A shipping refund is Motored's, as on
+// the card rail.
 //
 // The Trustless Work arithmetic below mirrors the v1 single-release contract
 // (`modules/fee/calculator.rs` and `modules/fee/distribution.rs`, branch
@@ -31,6 +40,13 @@ export const TW_FEE_BPS = 30n;
 export const BPS_DENOMINATOR = 10_000n;
 /** Highest `platform_fee` a v1 escrow accepts (99%). */
 export const TW_MAX_PLATFORM_FEE_BPS = 9_900n;
+/**
+ * The guard's `max_platform_fee_bps` planned for mainnet (10%). With shipping
+ * outside the escrow, 5% commission plus a buyer fee of at most 5% quotes about
+ * 922 bps (9.2%, Trustless Work's 0.3% included), under this cap. Testnet run 9
+ * deployed 500 (`scripts/testnet/deploy.ts`).
+ */
+export const MAINNET_MAX_PLATFORM_FEE_BPS = 1_000n;
 
 /** The marketplace's card-rail fee schedule. All rates in basis points, caps in cents. */
 export interface FeeSchedule {
@@ -83,13 +99,43 @@ export function cardNetCents(itemGrossCents: readonly bigint[], schedule: FeeSch
   return itemGrossCents.reduce((sum, g) => sum + g - applyBps(g, schedule.commissionBps), 0n);
 }
 
-/** Escrow amount in cents for a single-seller cart: items + shipping + buyer fee as charged. */
+/**
+ * Escrow amount in cents for a single-seller cart: items + buyer fee as charged.
+ * Shipping is not escrowed; it goes to the platform address (`orderAmountsCents`).
+ */
 export function escrowAmountCents(
-  input: { itemGrossCents: readonly bigint[]; shippingCents: bigint; referral: boolean },
+  input: { itemGrossCents: readonly bigint[]; referral: boolean },
   schedule: FeeSchedule = DEFAULT_FEE_SCHEDULE,
 ): bigint {
   const subtotal = input.itemGrossCents.reduce((a, b) => a + b, 0n);
-  return subtotal + input.shippingCents + buyerFeeCents(subtotal, input.referral, schedule);
+  return subtotal + buyerFeeCents(subtotal, input.referral, schedule);
+}
+
+/** What a single-seller cart charges the buyer on the EURC rail, in cents. */
+export interface OrderAmountsCents {
+  /** Items + buyer fee: the escrow amount. */
+  escrowCents: bigint;
+  /** Shipping, paid to the pinned platform address in the funding step, outside the escrow. */
+  shippingToPlatformCents: bigint;
+  /** Card-rail seller net: items minus commission, rounded per item. */
+  cardNetCents: bigint;
+  /** `escrowCents + shippingToPlatformCents`: what the buyer pays in all, as on the card rail. */
+  buyerPaysCents: bigint;
+}
+
+/** Splits a cart into the escrowed part and the shipping paid to the platform. */
+export function orderAmountsCents(
+  input: { itemGrossCents: readonly bigint[]; shippingCents: bigint; referral: boolean },
+  schedule: FeeSchedule = DEFAULT_FEE_SCHEDULE,
+): OrderAmountsCents {
+  if (input.shippingCents < 0n) throw new FeeRuleError('INVALID_AMOUNT', 'shipping must be non-negative');
+  const escrowCents = escrowAmountCents(input, schedule);
+  return {
+    escrowCents,
+    shippingToPlatformCents: input.shippingCents,
+    cardNetCents: cardNetCents(input.itemGrossCents, schedule),
+    buyerPaysCents: escrowCents + input.shippingCents,
+  };
 }
 
 /** Result of Trustless Work's `calculate_standard_fees(total, platform_fee_bps)`. */
@@ -118,8 +164,14 @@ export function platformFeeBps(amount: bigint, cardNet: bigint): bigint {
 }
 
 export interface EscrowQuote {
-  /** Escrow amount, 7-decimal units. */
+  /** Escrow amount (items + buyer fee), 7-decimal units. */
   amount: bigint;
+  /**
+   * Shipping the buyer pays to the platform address in the funding step, outside
+   * the escrow, 7-decimal units (0 when the order has none). Not part of `amount`,
+   * the platform fee or the release.
+   */
+  shippingToPlatform: bigint;
   /** Card-rail seller net, 7-decimal units. */
   cardNet: bigint;
   /** `platform_fee` to set on the escrow. */
@@ -130,22 +182,36 @@ export interface EscrowQuote {
   sellerOverCardNet: bigint;
 }
 
+export interface QuoteOptions {
+  /** The guard's `max_platform_fee_bps`. Default Trustless Work's 9,900; mainnet plans `MAINNET_MAX_PLATFORM_FEE_BPS`. */
+  maxPlatformFeeBps?: bigint;
+}
+
 /**
  * Quotes an escrow for an order. Throws `FeeRuleError` when the order is not
- * eligible for the escrow rail (fee would be negative or above Trustless Work's cap,
- * which happens for a low-value item with high shipping).
+ * eligible for the escrow rail (fee would be negative or above the cap, which
+ * happens only for carts of items around EUR 1, where the card rail's per-item
+ * rounding outweighs the rates).
  */
-export function quoteEscrow(input: { amount: bigint; cardNet: bigint }): EscrowQuote {
+export function quoteEscrow(
+  input: { amount: bigint; cardNet: bigint; shippingToPlatform?: bigint },
+  opts: QuoteOptions = {},
+): EscrowQuote {
+  const cap = opts.maxPlatformFeeBps ?? TW_MAX_PLATFORM_FEE_BPS;
+  if (cap < 0n || cap > TW_MAX_PLATFORM_FEE_BPS) throw new FeeRuleError('INVALID_AMOUNT', `cap ${cap} bps outside 0..${TW_MAX_PLATFORM_FEE_BPS}`);
+  const shippingToPlatform = input.shippingToPlatform ?? 0n;
+  if (shippingToPlatform < 0n) throw new FeeRuleError('INVALID_AMOUNT', 'shipping must be non-negative');
   const bps = platformFeeBps(input.amount, input.cardNet);
   if (bps < 0n) {
     throw new FeeRuleError('PLATFORM_FEE_NEGATIVE', `platform fee ${bps} bps < 0: card net exceeds 99.7% of the amount`);
   }
-  if (bps > TW_MAX_PLATFORM_FEE_BPS) {
-    throw new FeeRuleError('PLATFORM_FEE_ABOVE_CAP', `platform fee ${bps} bps > ${TW_MAX_PLATFORM_FEE_BPS}: card rail only`);
+  if (bps > cap) {
+    throw new FeeRuleError('PLATFORM_FEE_ABOVE_CAP', `platform fee ${bps} bps > ${cap}: card rail only`);
   }
   const release = twStandardFees(input.amount, bps);
   return {
     amount: input.amount,
+    shippingToPlatform,
     cardNet: input.cardNet,
     platformFeeBps: bps,
     release,
@@ -154,9 +220,9 @@ export function quoteEscrow(input: { amount: bigint; cardNet: bigint }): EscrowQ
 }
 
 /** True when `quoteEscrow` would succeed. */
-export function isEscrowEligible(input: { amount: bigint; cardNet: bigint }): boolean {
+export function isEscrowEligible(input: { amount: bigint; cardNet: bigint }, opts: QuoteOptions = {}): boolean {
   try {
-    quoteEscrow(input);
+    quoteEscrow(input, opts);
     return true;
   } catch (e) {
     if (e instanceof FeeRuleError) return false;

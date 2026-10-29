@@ -1,7 +1,9 @@
 // End-to-end order flow against in-memory ports (SCF D4, mock half).
 // Asserts the money outcomes the design promises:
 //   - the seller nets at least the card-rail payout (and at most 1 bp of the amount + 2 units more);
-//   - a refund returns 100% to the buyer (escrow refund + platform top-up);
+//   - a refund returns 100% of the escrow to the buyer (escrow refund + platform top-up);
+//   - shipping is paid to the platform address in the funding step, outside the escrow,
+//     and the platform fee stays under the 1,000 bps cap planned for mainnet;
 //   - the reconciler passes with zero unexplained cents;
 //   - the delivery claim verifies against the registry.
 import { describe, expect, it } from 'vitest';
@@ -22,8 +24,10 @@ describe('scenario 1: buyer approves, guarded release', () => {
     expect(o.sellerReceived).toBeGreaterThanOrEqual(o.cardNet);
     expect(o.sellerReceived - o.cardNet).toBeLessThanOrEqual(o.amount / BP + 2n);
     expect(o.buyerRefunded).toBe(0n);
-    // Every unit of the escrow is accounted for: seller + platform + Trustless Work.
-    expect(o.sellerReceived + o.platformNet + o.trustlessWorkFee).toBe(o.amount);
+    // Every unit the buyer paid is accounted for: seller + platform (fee and shipping) + Trustless Work.
+    expect(o.shippingToPlatform).toBe(1_200n * 100_000n);
+    expect(o.sellerReceived + o.platformNet + o.trustlessWorkFee).toBe(o.amount + o.shippingToPlatform);
+    expect(o.platformFeeBps).toBeLessThanOrEqual(1_000n);
     expect(o.trustlessWorkFee).toBe((o.amount * 30n) / BP);
     expect(o.claimVerified).toBe(true);
 
@@ -50,8 +54,9 @@ describe('scenario 2: silent buyer and refund with top-up', () => {
     expect(refund.refusals).toEqual([GuardErrorCode.BadRecipient]);
     expect(refund.buyerRefunded).toBe(refund.amount);
     expect(refund.sellerReceived).toBe(0n);
-    // The platform's net cost of a refund is Trustless Work's 0.3%.
-    expect(refund.platformNet).toBe(-refund.trustlessWorkFee);
+    // The platform's net cost of the escrow refund is Trustless Work's 0.3%; shipping
+    // reached the platform outside the escrow and is refunded, if at all, as on the card rail.
+    expect(refund.platformNet).toBe(refund.shippingToPlatform - refund.trustlessWorkFee);
 
     expect(r.reconciliation.pass).toBe(true);
     expect(r.reconciliation.unexplainedCents).toBe(0n);

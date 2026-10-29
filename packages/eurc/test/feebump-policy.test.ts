@@ -82,6 +82,30 @@ describe("fee-bump policy: allowed shapes", () => {
     expect(await w.policy().evaluate(wrong)).toMatchObject({ allowed: false, reason: "memo-mismatch" });
     expect(await w.policy().evaluate(none)).toMatchObject({ allowed: false, reason: "memo-mismatch" });
   });
+
+  it("the buyer's shipping payment to the configured platform address (outside the escrow)", async () => {
+    const w = world();
+    const platform = Keypair.random().publicKey();
+    const ship = (asset = w.xeur) => innerTx(w.buyer, [Operation.payment({ destination: platform, asset, amount: "4.99" })]);
+    expect(await w.policy({ platformAddress: platform }).evaluate(await ship())).toMatchObject({
+      allowed: true,
+      soroban: false,
+      action: { kind: "shipping_payment", destination: platform, amount: "4.9900000" },
+    });
+    // Without a configured platform address it is just another destination.
+    expect(await w.policy().evaluate(await ship())).toMatchObject({ allowed: false, reason: "destination-not-allowed" });
+    // Only EURC, and only as the transaction's single operation.
+    expect(await w.policy({ platformAddress: platform }).evaluate(await ship(Asset.native()))).toMatchObject({
+      allowed: false,
+      reason: "wrong-asset",
+    });
+    const bundled = await innerTx(w.buyer, [
+      fundEscrow(w.escrow, w.buyer.publicKey()),
+      Operation.payment({ destination: platform, asset: w.xeur, amount: "4.99" }),
+    ]);
+    expect(await w.policy({ platformAddress: platform }).evaluate(bundled)).toMatchObject({ allowed: false, reason: "operation-count" });
+    expect(() => w.policy({ platformAddress: w.escrow })).toThrow(/platformAddress/);
+  });
 });
 
 describe("fee-bump policy: rejections", () => {

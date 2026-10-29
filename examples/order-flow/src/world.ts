@@ -18,7 +18,7 @@
 // from transfers, exactly as the reconciler reads them on a real network.
 
 import { createHash, randomBytes } from 'node:crypto';
-import { Account, Keypair, Networks, Operation, StrKey, TransactionBuilder } from '@stellar/stellar-sdk';
+import { Account, Asset, Keypair, Networks, Operation, StrKey, TransactionBuilder } from '@stellar/stellar-sdk';
 import * as claims from '@motored-stellar/claims';
 import * as escrow from '@motored-stellar/escrow';
 import * as recon from '@motored-stellar/reconciler';
@@ -282,6 +282,28 @@ export function buildWorld(start = 1_800_000_000): World {
 /** EURC balance of any account or contract, from the transfer ledger. */
 export async function balanceOf(w: World, holder: string): Promise<bigint> {
   return (await w.chain.getBalance(holder)).amount;
+}
+
+/**
+ * The buyer's shipping payment in the funding step: a classic EURC payment to the
+ * escrow's pinned platform address, outside the escrow, built by
+ * `buildShippingPaymentTransaction` as the transaction after `fund_escrow`, reviewed
+ * and signed in the buyer's wallet, then recorded as a transfer. Returns its hash.
+ */
+export async function payShipping(w: World, buyer: WalletSigner, contractId: string, amount: bigint): Promise<string> {
+  const platform = (await w.api.getEscrow(contractId)).roles.platform;
+  const { tx } = escrow.buildShippingPaymentTransaction(
+    Networks.TESTNET,
+    { source: buyer.publicKey(), sequence: '1' },
+    platform,
+    { asset: new Asset('EURC', w.issuer), amount },
+  );
+  const signed = await buyer.wallet.signTransaction(tx);
+  if (!hasValidSignatureFrom(signed, buyer.publicKey())) throw new Error('buyer wallet signature did not verify');
+  const txHash = Buffer.from(signed.hash()).toString('hex');
+  w.chain.transfer({ txHash, closedAt: w.clock.now(), from: buyer.publicKey(), to: platform, amount });
+  w.api.log.push({ txHash, label: 'shipping_payment', at: w.clock.nowSeconds() });
+  return txHash;
 }
 
 /** Credits EURC to a wallet (stands in for a SEPA on-ramp or an exchange withdrawal). */

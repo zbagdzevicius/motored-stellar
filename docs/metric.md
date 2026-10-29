@@ -19,7 +19,9 @@ A release **counts** when an escrow is:
 
 **Volume** is the gross amount leaving the escrow towards the seller side: for a release,
 `escrow.amount` (seller net plus the Trustless Work fee plus the platform fee); for a resolution,
-the seller's share of the distribution map. Refunds to the buyer do not count.
+the seller's share of the distribution map. Refunds to the buyer do not count. Shipping is outside
+the escrow amount: the buyer pays it to the platform address in the funding step (29 Oct 2026
+design), so it is never in the counted volume. The floor numbers below are unchanged.
 
 **Window:** an escrow counts when it is **funded** inside a 45-day funding window (starting at the
 first funding of a counted escrow) and released or resolved to the seller within 14 days after

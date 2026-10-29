@@ -48,14 +48,21 @@ platform's keys can:
 - resolve it to its seller once a platform-issued delivery claim, anchored after the escrow was
   fully funded, is at least 7 days old;
 - resolve it to its seller once the buyer's approval of every milestone has been on record for 7
-  days alongside a dispute, without a buyer contest.
+  days alongside a dispute, without a buyer contest;
+- hold a release: as platform and dispute resolver, it can open a dispute or append an unapproved
+  milestone to a funded escrow, and either stops `release_funds` until the dispute is resolved
+  through the guard (to the buyer, or to the seller under the rules above).
+
+Shipping is not escrowed. The buyer pays it to the platform address in the funding step (a separate
+EURC payment sequenced right after `fund_escrow`), because the platform buys the DPD label; a
+shipping refund therefore rests on the platform, as on the card rail, not on the guard.
 
 No platform key can pay anyone except that escrow's buyer, its seller and the two fee recipients
 the guard pins (Trustless Work's fee account and the platform address), and no resolution can give
 the seller more than the escrow amount. The guard pins the recipients and caps the platform fee
 rate: the rate is set when the escrow is created and checked against the order by the platform's
 backend, and since v0.10 the guard refuses to register any escrow whose rate is above
-`max_platform_fee_bps` (set per deploy (500 bps in run 9; 3,000 bps planned for mainnet, because the platform fee also carries the DPD shipping Motored buys; an order whose quote is above the cap stays on the card rail), fixed at construction; landed on testnet in
+`max_platform_fee_bps` (set per deploy (500 bps in run 9; 1,000 bps planned for mainnet; shipping is paid to the platform address in the funding step, outside the escrow; an order whose quote is above the cap stays on the card rail), fixed at construction; landed on testnet in
 run 9; done pre-award, not billed).
 
 Escrows created while the platform backend is compromised are outside this guarantee, except that
