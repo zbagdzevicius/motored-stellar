@@ -21,7 +21,7 @@ enforce-mode simulation) and the buyer contest followed by a full refund; every 
 |---|---|---|
 | 27 Oct 2026 | Local (not CI) | `cargo test`: 76 passed (guard 68, claim registry 8); vitest: 382 passed across the workspaces; typecheck clean; the in-memory example ran |
 | 29 Oct 2026 | Local (not CI) | vitest: 388 passed across the workspaces (adds the run-5 helpers and the depth-32 proof builder); docs lint clean; scripts typecheck clean |
-| | GitHub Actions | The link to the first CI run is added here after the first push |
+| 29 Oct 2026 | GitHub Actions | First run on push of the published history, 29 Oct 2026: all four jobs green (contracts, TypeScript on Node 20 and 22, secrets and lint): https://github.com/zbagdzevicius/motored-stellar/actions/runs/40831236550 . Every later push runs the same workflow: https://github.com/zbagdzevicius/motored-stellar/actions |
 
 ## Unit tests against Trustless Work's deployed Wasm
 
