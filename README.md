@@ -171,22 +171,22 @@ reads Trustless Work's mainnet Wasm by hash, so it needs a repository **variable
 ## SCF #46 deliverables and where they live
 
 The deliverable IDs match the SCF #46 proposal. "Pre-award" is what this repository already holds
-and is not billed; "billed" is the remaining work the award would pay for. The marketplace-side
-changes (orders, checkout screens, payouts, invoices, admin) stay in Motored's private system and
-plug into the ports here; each is checked through a public artefact (CI tests of the rules it
+and is not billed; "billed" is the remaining work the award would pay for. Motored's own checkout UI,
+admin screens and marketplace code stay private and plug into the ports here; the Stellar-facing
+wiring of each billed deliverable ships here under Apache-2.0; each is checked through a public artefact (CI tests of the rules it
 imports, or testnet tx hashes mapped to order references in [docs/testnet-proofs.md](docs/testnet-proofs.md)).
 
 | ID | Scope | In this repository | Pre-award (not billed) | Billed remaining work |
 |---|---|---|---|---|
 | D1 | Trustless Work escrow in EURC on testnet, guard in both roles | [`packages/escrow`](packages/escrow), [`scripts/testnet`](scripts/testnet) | REST client (shapes marked TODO(verify)), deployer path, lifecycle, precheck, event reader, release service; deployer path ran on testnet (run 4) | Live v1 REST API runs (or the on-chain deployer, if Trustless Work confirms the API does not take a contract address in both roles, or has not answered within 10 working days of our dated written request, linked in the run log); Circle testnet EURC |
 | D2 | Wallets, sponsored accounts, EURC trustlines, fee-bumps | [`packages/wallets`](packages/wallets), [`packages/eurc`](packages/eurc) | Privy and Wallets Kit adapters, CAP-33 sponsorship, fee-bump policy; tx shapes lab-proven ([proofs](docs/testnet-proofs.md#sponsored-accounts-and-fee-bumps-wallet-lab-24-oct-2026)) | Browser runs with real wallets; Circle testnet EURC; measured fee caps; key custody |
-| D3 | Order system on the escrow (orders, ledger and reconciliation, payouts, disputes and refunds, notifications) | Rules only: [`packages/escrow/src/fees.ts`](packages/escrow/src/fees.ts); `OrderSource`, `DeliveryOracle`, `LedgerSource` ports | Fee, cap, rounding and refund rules with tests | Private marketplace wiring |
+| D3 | Order system on the escrow (orders, ledger and reconciliation, payouts, disputes and refunds, notifications) | Rules only: [`packages/escrow/src/fees.ts`](packages/escrow/src/fees.ts); `OrderSource`, `DeliveryOracle`, `LedgerSource` ports | Fee, cap, rounding and refund rules with tests | A new `packages/escrow-orders` (escrow order-state machine) and a `packages/reconciler` extension, with public CI tests; marketplace screens stay private |
 | D4 | Checkout on the EURC rail, end-to-end test | [`examples/order-flow`](examples/order-flow), [`scripts/testnet/e2e.ts`](scripts/testnet/e2e.ts), [`scripts/testnet/e2e-claims.ts`](scripts/testnet/e2e-claims.ts) | In-memory flow and the scripted testnet run | Private checkout UI; end-to-end run log appended to testnet-proofs.md |
 | D5 | Bridge on-ramp and off-ramp in sandbox | [`packages/ramps`](packages/ramps) | Offline unit tests | Sandbox runs |
 | D6 | Guard and claim registry: production hardening, claims from live DPD tracking | [`contracts/guard`](contracts/guard), [`contracts/claim-registry`](contracts/claim-registry), [`packages/claims`](packages/claims), [`packages/escrow/src/release-service.ts`](packages/escrow/src/release-service.ts) | Guard v0.8 and registry; lab-proven (3 runs) and run 4 | The remaining refused paths as landed failed txs (four landed in run 6); key-rotation and migration drill; `Anchored` event; live TTL check; Wasm verified on stellar.expert |
 | D7 | Threat model and monitoring | [`docs/threat-model.md`](docs/threat-model.md), [`docs/trust-model.md`](docs/trust-model.md) | Written | Sections for Bridge, sanctions, the wallet and checkout integration and order-system races; alert policies; a fired test alert |
 | D8 | Testnet hardening from pilot sessions, Polish locale | Failure-state tests land here | None | Billed |
-| D9 | Escrow operations console | Private | None | Billed |
+| D9 | Escrow operations console | Resolve and retry calls land in [`packages/escrow`](packages/escrow); console UI private | None | Billed |
 | D10 | Mainnet cutover | Mainnet deployment record lands in testnet-proofs.md's mainnet section | None | Billed; after the legal opinion, with per-order and open-value caps until an external review |
 | D11 | Seller EURC payouts, invoices, refunds after release | Off-ramp in [`packages/ramps`](packages/ramps); records are private | None | Billed |
 | D12 | Live rollout, reconciliation, metric, mainnet hardening | [`packages/reconciler`](packages/reconciler), [`scripts/metric`](scripts/metric), [`docs/metric.md`](docs/metric.md) | Reconciler, daily report and metric with unit tests | Indexer beyond RPC retention; mainnet runs; published daily report |
