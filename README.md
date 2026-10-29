@@ -74,7 +74,7 @@ marketplace plugs in, there is a small typed port (`OrderSource`, `DeliveryOracl
   repository on the SCF #46 filing day.
 - **Tests:** 83 Rust contract tests (guard 75, claim registry 8) and 410 TypeScript tests, counted
   locally on 29 Oct 2026 with guard v0.9 (`cargo test` and vitest across the eight workspaces).
-  CI run on the v0.9 commit: see [docs/verification.md](docs/verification.md). The workflow runs on
+  CI on the v0.9 commits is green ([run 40855043032](https://github.com/zbagdzevicius/motored-stellar/actions/runs/40855043032), logged in [docs/verification.md](docs/verification.md)). The workflow runs on
   every push; earlier counts (382 and 388 locally, 76 and 393 in the
   [CI run before v0.9](https://github.com/zbagdzevicius/motored-stellar/actions/runs/40839759344))
   are logged in the same file.
