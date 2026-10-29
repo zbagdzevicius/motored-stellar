@@ -1,0 +1,19 @@
+[package]
+name = "motored-escrow-guard"
+description = "Soroban custom account that narrows the Trustless Work v1 release_signer and dispute_resolver roles for a marketplace escrow"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+soroban-sdk = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+sha2 = "0.10"
