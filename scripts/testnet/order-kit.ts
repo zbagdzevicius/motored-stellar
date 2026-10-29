@@ -22,7 +22,7 @@ import { Chain, isTx, type GuardBranch } from '../lib/soroban.js';
 import { readState, type TestnetState } from '../lib/state.js';
 import { escrowValue } from '../lib/tw.js';
 
-/** 100 XEUR in 7-decimal units. */
+/** 100 XEUR in 7-decimal units: the order amount when neither `--amount` nor testnet-state.json sets one. */
 export const AMT = 1_000_000_000n;
 /** Claims are anchored in fixed-size batches so roots do not reveal volume. */
 export const CLAIM_BATCH_SIZE = 8;
@@ -58,11 +58,49 @@ export function toAmountString(units: bigint): string {
   return frac ? `${whole}.${frac}` : whole;
 }
 
+/** Decimal string (up to 7 places, as classic assets use) -> 7-decimal units. Rejects zero, negatives and excess precision. */
+export function parseAmount(v: string): bigint {
+  const m = /^(\d+)(?:\.(\d{1,7}))?$/.exec(v.trim());
+  if (!m) throw new Error(`amount must be a positive decimal with at most 7 places, got ${v}`);
+  const units = BigInt(m[1]!) * 10_000_000n + BigInt((m[2] ?? '').padEnd(7, '0') || '0');
+  if (units <= 0n) throw new Error(`amount must be above zero, got ${v}`);
+  return units;
+}
+
+/**
+ * The buyer balance a script needs, in multiples of the order amount, and what it
+ * spends for good (seller payouts). Refunds come back whole once the platform has
+ * topped up the two fees; without a top-up the buyer is also short about 5% of each
+ * refunded amount, which the 1.1x margin in `buyerNeed` covers.
+ *   e2e:         A released, then B (1x) and C (0.4x) refunded -> holds 2x, spends 1x (+1x with --silent-buyer)
+ *   e2e-claims:  D and E funded together, D paid to the seller, E refunded -> holds 2x, spends 1x
+ *   refusals:    A released, B, C, E refunded one at a time -> holds 2x, spends 1x
+ */
+export const BUYER_BUDGET = {
+  e2e: { hold: 2n, spend: 1n },
+  'e2e --silent-buyer': { hold: 3n, spend: 2n },
+  'e2e-claims': { hold: 2n, spend: 1n },
+  refusals: { hold: 2n, spend: 1n },
+} as const;
+export type ScriptName = keyof typeof BUYER_BUDGET;
+
+/** Minimum buyer balance (units) to start `script` at order amount `amt`: the peak holding plus a 10% fee margin. */
+export function buyerNeed(script: ScriptName, amt: bigint): bigint {
+  return (BUYER_BUDGET[script].hold * amt * 11n) / 10n;
+}
+
 export const sleep = (seconds: number): Promise<void> => new Promise((ok) => setTimeout(ok, seconds * 1000));
 
 export type OrderKit = Awaited<ReturnType<typeof openOrderKit>>;
 
-export async function openOrderKit(store: KeyStore, out: Out) {
+export interface OrderKitOptions {
+  /** Per-order amount as a decimal string (`--amount`); default: testnet-state.json's orderAmount, else 100. */
+  amount?: string;
+  /** Which script is running, for the buyer balance check before anything is signed. */
+  script?: ScriptName;
+}
+
+export async function openOrderKit(store: KeyStore, out: Out, opts: OrderKitOptions = {}) {
   const cfg = testnetConfig(process.env.MS_TESTNET_RPC);
   const chain = new Chain(cfg, out.log);
   await assertTestnetLive(chain.server, cfg);
@@ -83,6 +121,25 @@ export async function openOrderKit(store: KeyStore, out: Out) {
   const oracle: DeliveryOracle = new MockDeliveryOracle();
   const src = SUB.publicKey();
   const bal = (a: string) => chain.balance(st.sac, a, src);
+  const amountArg = opts.amount ?? st.orderAmount;
+  const amt = amountArg === undefined ? AMT : parseAmount(amountArg);
+  const unit = st.asset.code;
+  chain.note(`order amount ${toAmountString(amt)} ${unit} (${amt} units)`);
+
+  if (opts.script) {
+    const need = buyerNeed(opts.script, amt);
+    const have = await bal(B);
+    chain.note(`buyer holds ${toAmountString(have)} ${unit}; ${opts.script} needs at least ${toAmountString(need)} ${unit}`);
+    if (have < need) {
+      throw new Error(`buyer ${B} holds ${toAmountString(have)} ${unit}, ${opts.script} needs ${toAmountString(need)} at --amount ${toAmountString(amt)}; ` +
+        (st.asset.external ? 'fund it from https://faucet.circle.com (Stellar testnet, EURC) or lower --amount' : 'redeploy or lower --amount'));
+    }
+  }
+  // The stand-in deploy gives `third` (the wrong fee address in negative checks) a dust balance; with an
+  // external asset nothing is issued, so the buyer sends the same dust once.
+  if (st.asset.external && (await bal(keys.accounts.third.publicKey)) === 0n) {
+    await chain.classic('third: buyer sends 0.0001 dust (as the stand-in deploy does)', BUYER, [Operation.payment({ destination: keys.accounts.third.publicKey, asset, amount: '0.0001' })]);
+  }
 
   async function newEscrow(label: string, amount: bigint): Promise<string> {
     const r = await chain.invoke(`${label}: atomic deploy+init via Trustless Work deployer`, SUB, st.twDeployer, 'tw_new_single_release_escrow', [
@@ -145,25 +202,38 @@ export async function openOrderKit(store: KeyStore, out: Out) {
     return { ...c, escrow: E, batchId, index, proof };
   }
 
-  /** Refund top-up: the platform pays back exactly what the escrow's two fees took. */
-  async function topUp(label: string, paid: bigint, buyerBefore: bigint): Promise<void> {
+  /**
+   * Refund top-up: the platform pays back exactly what the escrow's two fees took.
+   * With an external asset the platform holds only its fee income (plus any faucet
+   * drip); when that is short, the top-up is skipped and logged instead of failing
+   * the run. Returns whether the buyer ended up whole.
+   */
+  async function topUp(label: string, paid: bigint, buyerBefore: bigint): Promise<boolean> {
     const received = (await bal(B)) - buyerBefore;
     const top = paid - received;
     chain.note(`${label} buyer received ${received} of ${paid}; top-up ${top}`);
-    if (top > 0n) await chain.classic(`${label}: platform refund top-up ${top}`, PLATFORM, [Operation.payment({ destination: B, asset, amount: toAmountString(top) })]);
-    chain.note(`${label} buyer net after top-up`, ((await bal(B)) - buyerBefore).toString());
+    if (top <= 0n) return true;
+    const platformHas = await bal(PLATFORM.publicKey());
+    if (platformHas < top) {
+      chain.note(`${label}: refund top-up SKIPPED, platform holds ${toAmountString(platformHas)} ${unit}, needs ${toAmountString(top)}`);
+      return false;
+    }
+    await chain.classic(`${label}: platform refund top-up ${top}`, PLATFORM, [Operation.payment({ destination: B, asset, amount: toAmountString(top) })]);
+    const net = (await bal(B)) - buyerBefore;
+    chain.note(`${label} buyer net after top-up`, net.toString());
+    return net === paid;
   }
 
   /** Writes the run log (public tx hashes only) to scripts/out/. */
   function exportLog(prefix: string): string {
     mkdirSync(OUT_DIR, { recursive: true });
     const logPath = resolve(OUT_DIR, `${prefix}-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
-    writeFileSync(logPath, JSON.stringify({ network: 'testnet', guard: st.guard, registry: st.registry, sac: st.sac, runLog: chain.runLog }, (_k, v) => (typeof v === 'bigint' ? v.toString() : v), 2) + '\n');
+    writeFileSync(logPath, JSON.stringify({ network: 'testnet', asset: `${st.asset.code}:${st.asset.issuer}`, orderAmount: toAmountString(amt), guard: st.guard, registry: st.registry, sac: st.sac, runLog: chain.runLog }, (_k, v) => (typeof v === 'bigint' ? v.toString() : v), 2) + '\n');
     return logPath;
   }
 
   return {
-    chain, st, src, keys: K, SUB, BUYER, SELLER, PLATFORM, B, S, fee, wrongFee, g,
+    chain, st, src, amt, keys: K, SUB, BUYER, SELLER, PLATFORM, B, S, fee, wrongFee, g,
     bal, newEscrow, must, fund, register, guarded, registration, anchorClaim, topUp, exportLog,
   };
 }

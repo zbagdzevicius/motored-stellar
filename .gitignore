@@ -16,6 +16,7 @@ keys.*.json
 *-keys.json
 *.pem
 testnet-state.json
+testnet-state.*.json
 
 # Third-party Wasm is fetched by hash (contracts/third_party/tw-wasm/fetch.sh), never vendored
 contracts/third_party/tw-wasm/*.wasm

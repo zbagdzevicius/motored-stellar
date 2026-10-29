@@ -17,8 +17,14 @@ export interface GuardConfigRecord {
 export interface TestnetState {
   network: 'testnet';
   deployedAt: string;
-  /** Stand-in asset code and issuer (testnet substitute for EURC). */
-  asset: { code: string; issuer: string };
+  /**
+   * The escrow asset: the stand-in XEUR issued by the `issuer` role, or an
+   * existing classic asset passed with `deploy --asset CODE:ISSUER` (Circle's
+   * testnet EURC), in which case `external` is true and nothing was issued.
+   */
+  asset: { code: string; issuer: string; external?: boolean };
+  /** Default order amount for the e2e scripts, as a decimal string (`--amount` overrides it). */
+  orderAmount?: string;
   /** Contract IDs (C...). */
   sac: string;
   registry: string;

@@ -18,6 +18,12 @@ Run 7, 29 Oct 2026, 09:27 to 09:35 UTC, deployed guard v0.9 (v0.8 rules plus in-
 upkeep, optimised Wasm sha256 `f53d1ece92fcc29f822aac45a720f4b112a0cdd637e22bf3185cc1ae23c4d0d1`) and
 re-ran the run 4 and run 5 scenarios on it; the extended TTLs were read back from the ledger
 ([testnet-proofs.md](testnet-proofs.md#run-7-guard-v09-with-ttl-upkeep-29-oct-2026-0927-to-0935-utc)).
+Run 8, 29 Oct 2026, 11:56 to 12:05 UTC, was the first on Circle's testnet EURC (issuer
+`GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO`, SAC
+`CCUUDM434BMZMYWYDITHFXHDMIVTGGD6T2I5UKNX5BSLXLW7HVR4MCGZ`) instead of a stand-in asset: a fresh
+deployment of guard v0.9 (uploaded Wasm `c3fe2055...`, the workspace 0.9.0 build), scenarios A to E
+with 2 EURC orders and four refusals landed as failed transactions
+([testnet-proofs.md](testnet-proofs.md#run-8-real-circle-testnet-eurc-guard-v09-29-oct-2026-1156-to-1205-utc)).
 
 ## Test runs of this repository
 
@@ -30,6 +36,7 @@ re-ran the run 4 and run 5 scenarios on it; the extended TTLs were read back fro
 | 29 Oct 2026 | Local (not CI), guard v0.9 | `cargo test`: 83 passed (guard 75: 73 rule and TTL tests plus 2 leaf golden-vector tests; claim registry 8); vitest: 396 passed across the eight workspaces (adds the metric collector paging tests); typecheck clean; docs lint clean; `check-secrets` OK; `stellar contract build` and `optimize`: guard v0.9 `f53d1ece...` |
 | 29 Oct 2026 | Local (not CI), repo finalize, version 0.9.0 | `cargo test`: 83 passed (guard 75, claim registry 8); vitest: 410 passed across the eight workspaces (claims 35, escrow 73, eurc 67, ramps 56, reconciler 55, wallets 61, scripts 55, example 8; adds the CAP-71 V2 auth-entry tests in `packages/escrow` and `packages/wallets`, the V2 fee-bump refusals in `packages/eurc` and the getTransfers paging tests in `packages/reconciler`); typecheck clean; docs lint clean; `check-secrets` OK; `stellar contract build` and `optimize` at workspace version 0.9.0: guard `c3fe2055...` (see the note under Guard v0.9 below). The README quotes this row. |
 | 29 Oct 2026 | GitHub Actions, v0.9 commits | All four jobs green (contracts, TypeScript on Node 22 and 24, secrets and lint): https://github.com/zbagdzevicius/motored-stellar/actions/runs/40855043032 |
+| 29 Oct 2026 | Testnet, run 8 on Circle testnet EURC, guard v0.9 `CAYLUEO3...RRXNQC` | `testnet:e2e` (A release, B dispute refund, C break-glass refund), `testnet:e2e-claims` (D silent-buyer payout against a depth-32 claim, E buyer contest then refund) and `testnet:refusals` (`BadFeeAddr` = 15, `NoClaim` = 8, `NotWholeToBuyer` = 13, `Contested` = 25 landed as FAILED, each code confirmed from the ledger) all passed with 2 EURC orders; the seller received 1.9 EURC in e2e A and in D, every refunded buyer netted 100% after the top-up. `npm run claims:recheck -- --from-state` afterwards: `ok: true` for D (depth 32) and, with `--index 0`, for A. Links in [testnet-proofs.md, Run 8](testnet-proofs.md#run-8-real-circle-testnet-eurc-guard-v09-29-oct-2026-1156-to-1205-utc) |
 | 29 Oct 2026 | Testnet, `npm run metric` | Run against the real escrows of runs 4 to 6 and of run 7: VERDICT FAIL (exit 3) on both, as expected for test volumes (300.0000000 over 3 escrows; 200.0000000 over 2 escrows); see [Re-run over runs 4 to 7](#re-run-over-runs-4-to-7-29-oct-2026-after-run-7) |
 
 Tag `pre-award-filing` marks the code at filing: the commit the tag pre-award-filing points to (see `git show pre-award-filing`).
