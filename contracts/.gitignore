@@ -1,0 +1,6 @@
+# Cargo build output (the guard tests read Wasm from target/wasm32v1-none/release/)
+target/
+# soroban-sdk test snapshots are regenerated on every test run; do not commit them
+**/test_snapshots/
+# Trustless Work Wasm is fetched by hash, never committed (see third_party/tw-wasm/fetch.sh)
+third_party/tw-wasm/*.wasm

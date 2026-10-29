@@ -1,0 +1,36 @@
+# Soroban contracts for Motored's EURC escrow on Stellar (testnet first).
+#
+# Build order matters for the tests: the guard's tests `contractimport!` the built
+# claim-registry and fake-escrow Wasm, include the guard's own Wasm (metering test)
+# and the Trustless Work Wasm fetched by hash. Run, from this directory:
+#
+#   ./third_party/tw-wasm/fetch.sh
+#   stellar contract build          # or: cargo build --target wasm32v1-none --release
+#   cargo test
+[workspace]
+resolver = "2"
+members = [
+    "claim-registry",
+    "guard",
+    "test-fixtures/fake-escrow",
+]
+
+[workspace.package]
+version = "0.8.0"
+edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/motored/motored-stellar" # TODO(verify): final public repo URL
+publish = false
+
+[workspace.dependencies]
+soroban-sdk = "26.0.0"
+
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+debug = 0
+strip = "symbols"
+debug-assertions = false
+panic = "abort"
+codegen-units = 1
+lto = true
