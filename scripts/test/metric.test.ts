@@ -50,7 +50,18 @@ describe('Tranche 3 metric over the recorded (synthetic) fixture', () => {
     expect(f.result!.thresholds.volume).toBe(false);
   });
 
-  it('caps silent-buyer resolutions at half of the counted escrows', () => {
+  it('caps silent-buyer resolutions at two thirds of the counted escrows', () => {
+    // Escrows 30-33 are silent-buyer resolutions to the seller; 0 and 1 are buyer-approved releases.
+    const ids = (idx: number[]) => idx.map((i) => obs[i]!.id);
+    const one = computeFootprintMetric({ ...fp, escrows: ids([0, 30, 31, 32, 33]), excluded: [] }, obs).result!;
+    expect(one.silentBuyer).toEqual({ total: 4, counted: 2 });
+    expect(one.escrows).toBe(3);
+    const two = computeFootprintMetric({ ...fp, escrows: ids([0, 1, 30, 31, 32, 33]), excluded: [] }, obs).result!;
+    expect(two.silentBuyer).toEqual({ total: 4, counted: 4 });
+    expect(two.escrows).toBe(6);
+  });
+
+  it('counts no silent-buyer resolution without a buyer approval', () => {
     const allSilent: EscrowObservation[] = obs.map((o) => ({ ...o, flags: { released: false, resolved: true, disputed: true }, buyerApproved: false }));
     const f = computeFootprintMetric(fp, allSilent);
     expect(f.result!.silentBuyer.counted).toBe(0);

@@ -38,6 +38,7 @@ with 2 EURC orders and four refusals landed as failed transactions
 | 29 Oct 2026 | GitHub Actions, run 8 commit | All four jobs green; vitest 413 (adds the --asset, decimal-amount and faucet-drip tests in scripts): https://github.com/zbagdzevicius/motored-stellar/actions/runs/40872318292 |
 | 29 Oct 2026 | GitHub Actions, v0.9 commits | All four jobs green (contracts, TypeScript on Node 22 and 24, secrets and lint): https://github.com/zbagdzevicius/motored-stellar/actions/runs/40855043032 |
 | 29 Oct 2026 | Local (not CI), architecture audit fixes, version 0.10.0 | `cargo test --locked -- --test-threads=1`: 95 passed (guard 84: 82 rule and TTL tests plus 2 leaf golden-vector tests; claim registry 11); `stellar contract build` passes; vitest: 445 passed across the eight workspaces (claims 42, escrow 89, eurc 67, ramps 56, reconciler 58, wallets 61, scripts 64, example 8; adds the event-reader paging and RPC-limit tests, the submitter retry, idempotency and mempool-eviction resend tests in all three submitters, the revoked-key upkeep test and the funded-in-window metric tests); typecheck and docs lint clean. Guard v0.10 is not yet deployed on testnet; runs 7 and 8 ran v0.9 |
+| 29 Oct 2026 | Local (not CI), silent-buyer cap raised from one half to two thirds | vitest: 448 passed across the eight workspaces (claims 42, escrow 89, eurc 67, ramps 56, reconciler 60, wallets 61, scripts 65, example 8; adds the two-thirds cap, the two-per-approval and the 7-of-20 floor tests in the reconciler and the two-thirds footprint test in scripts); typecheck and docs lint clean. Rust counts unchanged (95) |
 | 29 Oct 2026 | Testnet, run 8 on Circle testnet EURC, guard v0.9 `CAYLUEO3...RRXNQC` | `testnet:e2e` (A release, B dispute refund, C break-glass refund), `testnet:e2e-claims` (D silent-buyer payout against a depth-32 claim, E buyer contest then refund) and `testnet:refusals` (`BadFeeAddr` = 15, `NoClaim` = 8, `NotWholeToBuyer` = 13, `Contested` = 25 landed as FAILED, each code confirmed from the ledger) all passed with 2 EURC orders; the seller received 1.9 EURC in e2e A and in D, every refunded buyer netted 100% after the top-up. `npm run claims:recheck -- --from-state` afterwards: `ok: true` for D (depth 32) and, with `--index 0`, for A. Links in [testnet-proofs.md, Run 8](testnet-proofs.md#run-8-real-circle-testnet-eurc-guard-v09-29-oct-2026-1156-to-1205-utc) |
 | 29 Oct 2026 | Testnet, `npm run metric` | Run against the real escrows of runs 4 to 6 and of run 7: VERDICT FAIL (exit 3) on both, as expected for test volumes (300.0000000 over 3 escrows; 200.0000000 over 2 escrows); see [Re-run over runs 4 to 7](#re-run-over-runs-4-to-7-29-oct-2026-after-run-7) |
 
@@ -113,6 +114,9 @@ and the aborted A0). Footprints, saved observations and the captured output:
 [`runs/metric-footprint-run-7.json`](runs/metric-footprint-run-7.json),
 [`runs/metric-observations-run-7.json`](runs/metric-observations-run-7.json),
 [`runs/metric-output-run-7.txt`](runs/metric-output-run-7.txt).
+These captured outputs predate the change of the silent-buyer cap from one half to two thirds
+(29 Oct 2026, later the same day); each footprint has one silent-buyer resolution against at least
+one buyer-approved release, so it counts under either cap and the totals are unchanged.
 
 | Footprint | Counted (volume) | Refunds ignored | Not counted | Verdict |
 |---|---|---|---|---|

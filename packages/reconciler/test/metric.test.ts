@@ -127,7 +127,25 @@ describe("Tranche 3 metric", () => {
     expect(m.refundsIgnored).toBe(1);
   });
 
-  it("caps silent-buyer resolutions at half of the counted escrows", () => {
+  it("caps silent-buyer resolutions at two thirds of the counted escrows", () => {
+    const loud = escrows(7, "100", 7, 3, "L");
+    const silent = escrows(15, "100", 15, 3, "S");
+    const rs = silent.map((e, i) => resolution(e, e.amount, false, START + 2 * DAY + i * 1000));
+    const m = computeMetric(
+      input({
+        escrows: [...loud, ...silent],
+        releases: releases(loud),
+        resolutions: rs.map((r) => r.res),
+        transfers: rs.flatMap((r) => r.transfers),
+      }),
+    );
+    // counted silent <= 2 x counted buyer-approved: 14 of 15 count, earliest first.
+    expect(m.silentBuyer).toEqual({ total: 15, counted: 14 });
+    expect(m.escrows).toBe(21);
+    expect(m.volumeUnits).toBe(eur("2100"));
+  });
+
+  it("two silent per buyer approval all count (the old one-half cap would have dropped some)", () => {
     const loud = escrows(10, "100", 10, 3, "L");
     const silent = escrows(15, "100", 15, 3, "S");
     const rs = silent.map((e, i) => resolution(e, e.amount, false, START + 2 * DAY + i * 1000));
@@ -139,9 +157,32 @@ describe("Tranche 3 metric", () => {
         transfers: rs.flatMap((r) => r.transfers),
       }),
     );
-    expect(m.silentBuyer).toEqual({ total: 15, counted: 10 });
-    expect(m.escrows).toBe(20);
-    expect(m.volumeUnits).toBe(eur("2000"));
+    expect(m.silentBuyer).toEqual({ total: 15, counted: 15 });
+    expect(m.escrows).toBe(25);
+  });
+
+  it("the 20-escrow floor needs at least 7 buyer approvals", () => {
+    const run = (approved: number) => {
+      const loud = escrows(approved, "200", approved, 4, "L");
+      const silent = escrows(20 - approved, "200", 20 - approved, 4, "S");
+      const rs = silent.map((e, i) => resolution(e, e.amount, false, START + 2 * DAY + i * 1000));
+      return computeMetric(
+        input({
+          escrows: [...loud, ...silent],
+          releases: releases(loud),
+          resolutions: rs.map((r) => r.res),
+          transfers: rs.flatMap((r) => r.transfers),
+        }),
+      );
+    };
+    const seven = run(7);
+    expect(seven.escrows).toBe(20);
+    expect(seven.silentBuyer).toEqual({ total: 13, counted: 13 });
+    expect(seven.thresholds.escrows).toBe(true);
+    const six = run(6);
+    expect(six.silentBuyer).toEqual({ total: 14, counted: 12 });
+    expect(six.escrows).toBe(18);
+    expect(six.thresholds.escrows).toBe(false);
   });
 
   it("only counts the registered platform's escrows, inside the window, not excluded", () => {

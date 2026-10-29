@@ -86,7 +86,7 @@ marketplace plugs in, there is a small typed port (`OrderSource`, `DeliveryOracl
   The initial published history (pushed 29 Oct 2026) ends at the tag `pre-award-baseline`; diff
   any billed deliverable against that tag. The tag `pre-award-filing` marks the state of this
   repository on the SCF #46 filing day.
-- **Tests:** 95 Rust contract tests (guard 84, claim registry 11) and 445 TypeScript tests, counted
+- **Tests:** 95 Rust contract tests (guard 84, claim registry 11) and 448 TypeScript tests, counted
   locally on 29 Oct 2026 with guard v0.10 (`cargo test` and vitest across the eight workspaces).
   The v0.9 counts were 83 and 413; CI on the v0.9 commits is green ([run 40855043032](https://github.com/zbagdzevicius/motored-stellar/actions/runs/40855043032), logged in [docs/verification.md](docs/verification.md)). The workflow runs on
   every push; earlier counts (382 and 388 locally, 76 and 393 in the
