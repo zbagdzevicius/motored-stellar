@@ -1,4 +1,4 @@
-//! # motored-escrow-guard (v0.9)
+//! # motored-escrow-guard (v0.10)
 //!
 //! A Soroban custom account (`__check_auth`) that holds both the `release_signer` and the
 //! `dispute_resolver` role of a Trustless Work v1 **single-release** escrow and narrows what
@@ -11,7 +11,9 @@
 //!   (a) a delivery claim anchored in the claim registry after full funding and at least
 //!   `delay` old, or (b) the buyer's approval on record, a dispute seen afterwards and no
 //!   buyer `contest` within `contest_window`. The seller never receives more than the escrow
-//!   amount; `withdraw_remaining_funds` may only ever pay the buyer.
+//!   amount. `withdraw_remaining_funds` pays the buyer at any time; it pays the seller only under
+//!   the same seller rules and then closes the registration (v0.10), so a seller payout never
+//!   depends on a buyer leg that the buyer can make fail (a removed trustline, a frozen account).
 //! * **Break-glass** (`resolve_dispute` only): signed by a separate, offline key. Refund only:
 //!   the whole distribution goes to the buyer.
 //!
@@ -21,9 +23,11 @@
 //! The tests in `src/test.rs` run every rule against Trustless Work's deployed v1 Wasm files
 //! (testnet `7c3f7b2a...`, mainnet `96d51751...`), fetched by hash.
 //!
-//! **TTL upkeep (v0.9).** Every state-changing entry point extends the guard's instance (and code)
-//! TTL, and every entry point that loads an escrow registration (`register_escrow`, `contest`,
-//! `__check_auth`) extends that `Reg` entry's TTL, by [`TTL_THRESHOLD`] / [`TTL_EXTEND_TO`]. The
+//! **TTL upkeep (v0.9; mainnet-sized in v0.10).** Every state-changing entry point extends the
+//! guard's instance (and code) TTL, and every entry point that loads an escrow registration
+//! (`register_escrow`, `contest`, `__check_auth`) extends that `Reg` entry's TTL, by
+//! [`TTL_THRESHOLD`] / [`TTL_EXTEND_TO`]. Both sit at or above mainnet's `min_persistent_ttl`, so the
+//! first touch of a fresh entry already extends it on every network. The
 //! read-only views (`check_escrow`, `registration`) do not: they are run by simulation, where an
 //! extension never reaches the ledger. The extension changes no rule: it runs on data the entry
 //! point already loaded and never alters a stored value.
@@ -290,14 +294,20 @@ pub struct BuyerContested {
 
 /// Ledgers per day at the ~5 s target ledger close time.
 pub const LEDGERS_PER_DAY: u32 = 17_280;
-/// TTL upkeep threshold: an entry whose remaining TTL is at or below 30 days is extended.
-pub const TTL_THRESHOLD: u32 = 30 * LEDGERS_PER_DAY;
-/// TTL upkeep target: such an entry is extended to 60 days from the current ledger. The longest
-/// unattended stretch the rules need is `delay` + `contest_window` (7 + 7 days with the deployed
-/// configuration), well inside both values, and `register_escrow` is permissionless, so anyone
-/// can top an escrow's registration up. The host clamps a persistent extension to the network's
-/// maximum entry TTL, and a network minimum above these values makes the call a no-op.
-pub const TTL_EXTEND_TO: u32 = 60 * LEDGERS_PER_DAY;
+/// Mainnet `min_persistent_ttl` (120 days): every new persistent entry, and the instance, starts with
+/// this TTL. Testnet's minimum is lower (120,960 ledgers, 7 days).
+pub const MAINNET_MIN_PERSISTENT_TTL: u32 = 120 * LEDGERS_PER_DAY;
+/// TTL upkeep threshold: an entry whose remaining TTL is at or below 120 days is extended. Equal to
+/// the mainnet minimum, so a fresh entry (which starts at the minimum minus one ledger) is extended
+/// at its first touch on mainnet as on testnet. v0.9 used 30 days, which made the upkeep a no-op on
+/// mainnet for the first 90 days of every entry.
+pub const TTL_THRESHOLD: u32 = MAINNET_MIN_PERSISTENT_TTL;
+/// TTL upkeep target: such an entry is extended to 150 days from the current ledger, so each
+/// extension buys at least 30 days of rent. The longest unattended stretch the rules need is
+/// `delay` + `contest_window` (7 + 7 days with the deployed configuration), well inside both values,
+/// and `register_escrow` is permissionless, so anyone can top an escrow's registration up. 150 days
+/// is under the maximum entry TTL of both networks (180 days on mainnet).
+pub const TTL_EXTEND_TO: u32 = 150 * LEDGERS_PER_DAY;
 
 #[contract]
 pub struct Guard;
@@ -665,31 +675,32 @@ impl CustomAccountInterface for Guard {
                 env.crypto().ed25519_verify(&c.resolver_pk, &msg, &s);
                 let i = fee_arg_ok(&env, &c, &cc.args)?;
                 let d = dist_at(&env, &cc.args, i)?;
-                if cc.fn_name == wrf {
-                    // withdraw_remaining_funds also works while merely disputed, partially, with no
-                    // Trustless Work event: it may only ever pay the buyer.
-                    for (a, _) in d.iter() {
-                        if a != reg.buyer {
-                            return Err(GErr::BadRecipient);
-                        }
-                    }
-                    return Ok(());
-                }
-                if reg.closed {
-                    return Err(GErr::Closed);
-                }
                 let mut to_seller = false;
-                for (a, _) in d.iter() {
+                for (a, v) in d.iter() {
                     if a == reg.seller {
                         to_seller = true;
                         // v0.8: the seller never receives more than the escrow amount the buyer
                         // committed to; any excess (overfunding, dust) can only go to the buyer.
-                        if d.get(a).unwrap() > reg.amount {
+                        if v > reg.amount {
                             return Err(GErr::SellerOverAmount);
                         }
                     } else if a != reg.buyer {
                         return Err(GErr::BadRecipient);
                     }
+                }
+                if cc.fn_name == wrf && !to_seller {
+                    // withdraw_remaining_funds also works while merely disputed, partially, with no
+                    // Trustless Work event. To the buyer alone it is allowed at any time (excess after
+                    // release, the buyer's share after a seller withdrawal) and closes nothing.
+                    return Ok(());
+                }
+                // v0.10: a seller share, through resolve_dispute or withdraw_remaining_funds, is
+                // authorized at most once per registration (it closes it), so the seller's total is
+                // capped at the escrow amount. withdraw_remaining_funds needs no sum-to-balance map,
+                // so a buyer who removes their trustline (or is frozen) and dusts the escrow cannot
+                // block the seller: the seller is paid alone and the rest stays for the buyer.
+                if reg.closed {
+                    return Err(GErr::Closed);
                 }
                 if to_seller {
                     // Any seller payout needs the escrow to have been seen fully funded.

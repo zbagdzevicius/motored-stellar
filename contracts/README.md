@@ -12,7 +12,7 @@ target `wasm32v1-none`).
 
 A tagged release of this workspace is part of D13.
 
-**Status: v0.9 (v0.8 rules plus in-contract TTL upkeep), unaudited, testnet only.**
+**Status: v0.10 (v0.9 plus a seller payout no buyer leg can block, and mainnet-sized TTL upkeep in the guard and the registry), unaudited, testnet only.**
 
 ## Build and test
 
@@ -34,9 +34,10 @@ The order matters. The guard tests:
 only reads the Wasm code entry; nothing in this repository deploys to mainnet. Set
 `TW_WASM_SRC_DIR` to copy the two files from a local cache instead (still hash-checked).
 
-Expected result: 73 guard tests in `guard/src/test.rs` (35 tests x 2 Trustless Work
-lineages, plus `m01`, `m02` and `m03`; v0.9 added the TTL upkeep tests `x08`-`x10` and `m03`), the leaf golden-vector tests in `guard/src/test_vectors.rs` (the
-same vectors are asserted by `packages/claims`), and 8 claim-registry tests. `cargo test -- --nocapture` prints the payout splits and the metered CPU
+Expected result: 95 tests. 82 guard tests in `guard/src/test.rs` (39 tests x 2 Trustless Work
+lineages, plus `m01`-`m04`; v0.9 added the TTL upkeep tests `x08`-`x10` and `m03`; v0.10 added
+`x11`-`x14` and `m04`), the 2 leaf golden-vector tests in `guard/src/test_vectors.rs` (the
+same vectors are asserted by `packages/claims`), and 11 claim-registry tests. `cargo test -- --nocapture` prints the payout splits and the metered CPU
 and memory cost of a seller resolution with a depth-32 proof (`m02`).
 
 `test_snapshots/` directories written by soroban-sdk are git-ignored.
@@ -50,18 +51,28 @@ the guard as both `release_signer` and `dispute_resolver`, so every payout needs
 | Branch (`GuardSig`) | Key | Allowed call | Rule |
 |---|---|---|---|
 | `Release` | release | `release_funds` | Trustless Work requires every milestone approved by the buyer and no open dispute |
-| `Resolve` | resolver | `resolve_dispute`, `withdraw_remaining_funds` | Recipients only buyer and seller. Seller share only on the approved-and-uncontested path (buyer approved, dispute seen afterwards, no `contest` within `contest_window`). `withdraw_remaining_funds` pays the buyer only |
-| `ResolveSeller` | resolver | `resolve_dispute` | Seller share backed by a delivery claim anchored after full funding and at least `delay` old |
+| `Resolve` | resolver | `resolve_dispute`, `withdraw_remaining_funds` | Recipients only buyer and seller. Seller share only on the approved-and-uncontested path (buyer approved, dispute seen afterwards, no `contest` within `contest_window`). `withdraw_remaining_funds` to the buyer alone is allowed at any time |
+| `ResolveSeller` | resolver | `resolve_dispute`, `withdraw_remaining_funds` | Seller share backed by a delivery claim anchored after full funding and at least `delay` old |
 | `BreakGlass` | break-glass (offline) | `resolve_dispute` | Whole distribution to the buyer (refund only) |
 
 TTL upkeep (v0.9): `register_escrow`, `contest` and `__check_auth` extend the touched registration
 and the guard's instance and code; the key-rotation calls and the constructor extend the instance and
-code. An entry with 30 days (`TTL_THRESHOLD`, 518,400 ledgers) or less left is extended to 60 days
-(`TTL_EXTEND_TO`, 1,036,800 ledgers). The views `check_escrow` and `registration` do not extend. No
-rule changes.
+code. An entry with 120 days (`TTL_THRESHOLD`, 2,073,600 ledgers, mainnet's `min_persistent_ttl`) or
+less left is extended to 150 days (`TTL_EXTEND_TO`, 2,592,000 ledgers), so a fresh entry is extended
+at its first touch on mainnet as on testnet (v0.10; v0.9's 30/60 days left a fresh mainnet entry
+untouched for 90 days). The views `check_escrow` and `registration` do not extend. No rule changes.
 
 In every seller payout the seller's share is capped at the escrow amount (v0.8); overfunding and
 dust can only go to the buyer.
+
+Seller payout without a buyer leg (v0.10): `resolve_dispute` needs a map that sums to the escrow's
+live balance, so a buyer who removes their EURC trustline (or whose account Circle freezes) and sends
+1 unit of dust could make every seller resolution carry a buyer leg that reverts. The resolver
+branches therefore also authorise `withdraw_remaining_funds` with a seller share, under the same
+seller rules (claim, or approved and uncontested) and the same cap. Any authorised seller share,
+on either entry point, closes the registration, so the seller is paid at most once and never more
+than the escrow amount in total. The rest stays in the escrow for the buyer and leaves through
+`withdraw_remaining_funds` to the buyer alone, which stays allowed after closing.
 
 Public functions:
 
@@ -107,8 +118,15 @@ Delivery-claim leaf (tag `0x01`), computed on chain by `motored_escrow_guard::le
 sha256(0x01 || XDR(ScVal::Address(escrow)) || order_ref || parcels_commit || carrier_event_ref || u64_be(delivered_at))
 ```
 
-See [`../docs/leaf-format.md`](../docs/leaf-format.md). The registry's TTL constants are testnet
-values; a production deployment must keep anchored roots live for the whole claim horizon.
+See [`../docs/leaf-format.md`](../docs/leaf-format.md).
+
+TTL upkeep (v0.10): `anchor` extends the new root, `revoke` the revocation entry, and `verify` and
+`anchored_at` the revocation entry or root they read; every call extends the instance and code. Same
+values as the guard (120 / 150 days, at or above mainnet's minimum; v0.8's 1 / 2 days were below every
+network's minimum, so its extensions were no-ops). An extension on a path that then fails is rolled
+back with it, so the off-chain keeper still extends revocation entries. The issuer and revoker are
+fixed at construction; they are meant to be multisig G-accounts that rotate signers at the account
+level, and a compromised one is replaced by a new registry and a new guard for new escrows.
 
 ## Provenance
 

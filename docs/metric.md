@@ -1,7 +1,12 @@
 # On-chain release metric (Tranche 3)
 
-The metric is defined so that anyone can recompute it from public chain data with
-[`scripts/metric`](../scripts/metric), without access to the marketplace's systems.
+The metric is defined on public chain data only, and [`scripts/metric`](../scripts/metric)
+recomputes it. Today the script reads events from Stellar RPC, which keeps them for a limited
+window only (days, not the whole metric period), so a full recompute needs a public archive of
+older events: SDF's Hubble dataset (Stellar history on BigQuery) holds them, but the script has no
+adapter for it yet. Until it does, from the first mainnet escrow the platform will publish weekly signed snapshots of the
+footprint's events, each taken while RPC still holds those ledgers, so anyone can check each
+snapshot against RPC that week and then feed the snapshots to the script with `--observations`.
 
 ## Definition
 
@@ -16,7 +21,15 @@ A release **counts** when an escrow is:
 `escrow.amount` (seller net plus the Trustless Work fee plus the platform fee); for a resolution,
 the seller's share of the distribution map. Refunds to the buyer do not count.
 
-**Floor** (all three within a 45-day window; the floor is the payment condition):
+**Window:** an escrow counts when it is **funded** inside a 45-day funding window (starting at the
+first funding of a counted escrow) and released or resolved to the seller within 14 days after
+that window ends. The whole metric therefore closes 59 days after the first counted funding, and an
+escrow funded late in the window still has time to close. The closing deadline is day 80 after the
+Tranche 2 payment (week 26 at the latest), inside the 90-day tranche limit, so the funding window
+must start by day 21 after that payment; if it cannot, pro-rated thresholds are agreed with SCF in
+writing by day 21.
+
+**Floor** (all three over the escrows so counted; the floor is the payment condition):
 
 1. At least EUR 4,000 in EURC released (primary).
 2. At least 20 mainnet escrows funded and then released or resolved to the seller, from at least
@@ -29,13 +42,20 @@ half of the counted escrows.
 **Target** (reported, not a condition): EUR 7,000 from 35 escrows, at least 20 distinct buyer
 wallets and 6 distinct sellers. **Stretch** (reported, not a condition): EUR 15,000 from 70 escrows.
 
-If the opt-in measured in the Tranche 2 pilot is below the basis behind these numbers (about 5% of
-orders for the floor, 9% for the target), it is reported and SCF is asked in writing to recalibrate
-before Tranche 3; the floor stands unless SCF agrees.
+Basis: the floor is sized on the current paid-order pace (the 1-15 October 2026 pace, about 8.6
+orders a day, so about 390 orders funded in a 45-day window), assuming that eligible orders run
+through the platform checkout, where EURC is offered; about 5% of them choosing EURC for the floor
+and 9% for the target; and, because silent-buyer resolutions count for at most half, at least 10
+counted escrows settled on the buyer's own approval. The Tranche 2 recalibration re-bases the floor
+on measured checkout volume, opt-in rate and buyer-approval rate: the pilot reports
+platform-checkout order volume, EURC opt-in among eligible orders and the buyer-approval rate, and
+if any is below the basis, SCF is asked in writing to re-base the floor on those figures before
+Tranche 3; the floor stands unless SCF agrees.
 
 In code: `METRIC_THRESHOLDS` in `packages/reconciler/src/metric.ts` is the floor and decides the
 PASS/FAIL verdict printed by `scripts/metric`; `METRIC_TARGET` and the stretch values are reported
-alongside it.
+alongside it. `METRIC_WINDOW_DAYS` (45) and `METRIC_CLOSE_DAYS` (14) set the window; each escrow's
+`fundedAt` is its first incoming transfer.
 
 The number of new EURC-holding accounts the sponsor account sponsored is reported as information.
 
@@ -43,7 +63,11 @@ The number of new EURC-holding accounts the sponsor account sponsored is reporte
 
 ## Footprint
 
-Registered up front and published in this repository:
+Registered up front and published in this repository. The mainnet platform fee address and sponsor
+account are created before the award, and the mainnet guard and registry contract IDs are fixed in
+advance from the deployer account and a published salt (a Soroban contract ID depends only on the
+network, the deployer and the salt), so all four can be registered at award time. A replacement
+guard joins the footprint only with SCF's written acknowledgement.
 
 | Item | Why |
 |---|---|
@@ -77,14 +101,19 @@ Registered up front and published in this repository:
 5. Classify a resolution as silent-buyer when the guard authorised it on the claim path
    (`ResolveSeller`).
 
-RPC keeps events for a limited window only, so a full recompute reads from an indexer or from the
-event store the platform publishes; the script takes an `EventSource` port for that reason.
+RPC keeps events for a limited window only, so a full recompute reads from an archive (SDF's Hubble
+dataset, once an adapter exists) or from the weekly signed snapshots the platform will publish from the first mainnet escrow (D12); the
+script takes an `EventSource` port for that reason. The RPC collector refuses a start ledger older
+than the RPC's oldest ledger rather than silently undercounting.
 
 ## Real output on testnet (runs 4 to 7, 29 Oct 2026)
 
 The script has been run against the real testnet escrows of runs 4 to 7 (one footprint per guard
 deployment; files and the full table in [verification.md](verification.md#re-run-over-runs-4-to-7-29-oct-2026-after-run-7)).
-Run 7 footprint, output as captured in [`runs/metric-output-run-7.txt`](runs/metric-output-run-7.txt):
+Run 7 footprint, output as captured in [`runs/metric-output-run-7.txt`](runs/metric-output-run-7.txt)
+before the funded-in-window rule (the current script prints the funding window and the closing
+deadline on the `window:` line; the counts for these escrows are the same, since each closed
+minutes after funding):
 
 ```
 network: testnet

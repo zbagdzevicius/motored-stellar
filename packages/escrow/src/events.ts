@@ -22,7 +22,7 @@
 
 import { scValToNative, xdr } from '@stellar/stellar-sdk';
 import { escrowFromNative, type OnChainEscrow } from './escrow-types.js';
-import type { EventSource, FundingHistory, FundRecord, RawContractEvent } from './ports.js';
+import { cursorLedger, RPC_MAX_CONTRACT_IDS, type EventQuery, type EventSource, type FundingHistory, type FundRecord, type RawContractEvent } from './ports.js';
 import { addressTopic, symbolTopic } from './scval.js';
 
 export const TW_EVENT_TOPICS = [
@@ -136,10 +136,22 @@ export function transferOutFilter(escrowContractId: string): string[] {
   return [symbolTopic('transfer'), addressTopic(escrowContractId), '*', '*'];
 }
 
+/** Splits `ids` into groups RPC accepts in one `contractIds` filter. */
+export function chunkContractIds(ids: readonly string[], size = RPC_MAX_CONTRACT_IDS): string[][] {
+  const out: string[][] = [];
+  for (let i = 0; i < ids.length; i += size) out.push(ids.slice(i, i + size));
+  return out;
+}
+
 /**
  * Polls Trustless Work events for registered escrows and token transfers out of
  * them. The caller persists `cursor` and the decoded events: RPC keeps events for
  * a limited window only.
+ *
+ * RPC limits honoured here: at most 5 contract ids per filter (`readAll` and
+ * `fundings` split larger sets), a start ledger inside the retention window
+ * (clamped to `oldestLedger`, never 0), and a bounded scan per request (paging
+ * continues until the cursor reaches `latestLedger`, not until the first empty page).
  */
 export class EscrowEventReader implements FundingHistory {
   constructor(
@@ -147,21 +159,69 @@ export class EscrowEventReader implements FundingHistory {
     private readonly opts: {
       tokenContractId?: string;
       pageLimit?: number;
-      /** First ledger `fundings()` scans from. Must lie inside the RPC's retention window. */
+      /** First ledger `fundings()` scans from. Clamped to the source's oldest retained ledger. */
       fromLedger?: number;
     } = {},
   ) {}
 
-  /** One page of Trustless Work events for `escrows`, decoded. */
+  /** `requested` clamped into the source's retention window; never below ledger 1. */
+  private async startLedger(requested?: number): Promise<number> {
+    const range = this.source.ledgerRange ? await this.source.ledgerRange() : undefined;
+    let s = requested ?? range?.oldestLedger ?? 1;
+    if (range) s = Math.min(Math.max(s, range.oldestLedger), range.latestLedger);
+    return Math.max(s, 1);
+  }
+
+  /** Every event matching `q` from `startLedger` to the source's latest ledger. `q.contractIds` must fit one filter. */
+  private async scan(q: Omit<EventQuery, 'cursor' | 'startLedger' | 'limit'>, startLedger: number): Promise<{ events: RawContractEvent[]; latestLedger?: number }> {
+    const limit = this.opts.pageLimit ?? 100;
+    const events: RawContractEvent[] = [];
+    let cursor: string | undefined;
+    let latestLedger: number | undefined;
+    for (;;) {
+      const page = await this.source.getEvents({ ...q, cursor, startLedger: cursor ? undefined : startLedger, limit });
+      events.push(...page.events);
+      latestLedger = page.latestLedger ?? latestLedger;
+      // An empty or short page is not the end: RPC scans a bounded ledger range per request
+      // and returns a cursor at the end of that range. Stop when the cursor stops moving, or
+      // when the page is short and the cursor has reached the latest ledger (a source that
+      // reports no latest ledger ends on its first short page).
+      if (!page.cursor || page.cursor === cursor) break;
+      if (page.events.length < limit && (page.latestLedger === undefined || cursorLedger(page.cursor) >= page.latestLedger)) break;
+      cursor = page.cursor;
+    }
+    return { events, latestLedger };
+  }
+
+  /** One page of Trustless Work events for up to 5 `escrows`, decoded. Use `readAll` for more. */
   async poll(escrows: string[], from: { cursor?: string; startLedger?: number } = {}): Promise<{ events: DecodedEvent[]; cursor?: string }> {
+    if (escrows.length > RPC_MAX_CONTRACT_IDS) throw new RangeError(`poll takes at most ${RPC_MAX_CONTRACT_IDS} escrows (RPC limit); use readAll`);
     const page = await this.source.getEvents({
       contractIds: escrows,
       topics: twTopicFilters(),
       cursor: from.cursor,
-      startLedger: from.startLedger,
+      startLedger: from.cursor ? undefined : await this.startLedger(from.startLedger),
       limit: this.opts.pageLimit ?? 100,
     });
     return { events: page.events.filter((e) => e.inSuccessfulContractCall !== false).map(decodeEvent), cursor: page.cursor };
+  }
+
+  /**
+   * Every Trustless Work event for `escrows` (any number) from `startLedger` to the
+   * source's latest ledger, in event order. Escrows are read in groups of 5. Resume
+   * with `startLedger: latestLedger` and drop events whose id you already hold.
+   */
+  async readAll(escrows: string[], from: { startLedger?: number } = {}): Promise<{ events: DecodedEvent[]; latestLedger?: number }> {
+    const start = await this.startLedger(from.startLedger);
+    const byId = new Map<string, RawContractEvent>();
+    let latestLedger: number | undefined;
+    for (const ids of chunkContractIds(escrows)) {
+      const r = await this.scan({ contractIds: ids, topics: twTopicFilters() }, start);
+      for (const e of r.events) if (e.inSuccessfulContractCall !== false) byId.set(e.id, e);
+      if (r.latestLedger !== undefined) latestLedger = Math.max(latestLedger ?? 0, r.latestLedger);
+    }
+    const events = [...byId.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)).map(decodeEvent);
+    return { events, latestLedger };
   }
 
   /** Token transfers out of `escrow` (releases, resolutions and withdrawals). */
@@ -171,30 +231,20 @@ export class EscrowEventReader implements FundingHistory {
       contractIds: [this.opts.tokenContractId],
       topics: [transferOutFilter(escrow)],
       cursor: from.cursor,
-      startLedger: from.startLedger,
+      startLedger: from.cursor ? undefined : await this.startLedger(from.startLedger),
       limit: this.opts.pageLimit ?? 100,
     });
     return { events: page.events.map(decodeEvent), cursor: page.cursor };
   }
 
-  /** Every `fund_escrow` call on `escrow` (pages until exhausted). */
+  /** Every `fund_escrow` call on `escrow`, from `fromLedger` (clamped) to the latest ledger. */
   async fundings(escrow: string): Promise<FundRecord[]> {
+    const { events } = await this.scan({ contractIds: [escrow], topics: [[symbolTopic('tw_fund')]] }, await this.startLedger(this.opts.fromLedger));
     const out: FundRecord[] = [];
-    let cursor: string | undefined;
-    for (;;) {
-      const page = await this.source.getEvents({
-        contractIds: [escrow],
-        topics: [[symbolTopic('tw_fund')]],
-        cursor,
-        startLedger: cursor ? undefined : (this.opts.fromLedger ?? 0),
-        limit: this.opts.pageLimit ?? 100,
-      });
-      for (const raw of page.events) {
-        const d = decodeEvent(raw);
-        if (d.kind === 'tw_fund') out.push({ signer: d.signer, amount: d.amount, txHash: d.txHash, ledger: d.ledger });
-      }
-      if (page.events.length === 0 || page.cursor === cursor) break;
-      cursor = page.cursor;
+    for (const raw of events) {
+      if (raw.inSuccessfulContractCall === false) continue;
+      const d = decodeEvent(raw);
+      if (d.kind === 'tw_fund') out.push({ signer: d.signer, amount: d.amount, txHash: d.txHash, ledger: d.ledger });
     }
     return out;
   }

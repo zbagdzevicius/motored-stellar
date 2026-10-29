@@ -12,8 +12,10 @@
  * - footprint checks the reconciler does not make: each escrow must use the
  *   footprint token and name the guard as both release_signer and
  *   dispute_resolver, with receiver == service_provider and seller != buyer;
- * - the window: `windowDays` (default 45) consecutive days from the first
- *   funding of a counted (non-excluded, eligible) escrow, or `windowStart`;
+ * - the funding window: `windowDays` (default 45) consecutive days from the
+ *   first funding of a counted (non-excluded, eligible) escrow, or
+ *   `windowStart`; an escrow funded inside it counts if it closes within
+ *   `closeDays` (default 14) after the window ends;
  * - mapping per-escrow observations (state + token transfers) into the
  *   reconciler's normalised events.
  */
@@ -29,6 +31,7 @@ import {
 
 const DAY_MS = 86_400_000;
 export const DEFAULT_WINDOW_DAYS = 45;
+export const DEFAULT_CLOSE_DAYS = 14;
 
 export interface Footprint {
   network: 'testnet' | 'mainnet';
@@ -51,6 +54,8 @@ export interface Footprint {
   /** Optional fixed window start (unix seconds); otherwise the first counted funding. */
   windowStart?: number;
   windowDays?: number;
+  /** Days after the funding window in which a funded escrow may still close and count. */
+  closeDays?: number;
   /** Optional first ledger to scan for events (RPC collection). */
   startLedger?: number;
   [extra: string]: unknown;
@@ -130,9 +135,10 @@ export function toMetricInput(fp: Footprint, observations: EscrowObservation[]):
     const inflows = o.transfers.filter((t) => t.to === o.id && t.amount > 0n);
     if (inflows.length === 0) { skipped.push({ escrow: id, reason: 'never funded' }); continue; }
     const isExcluded = excluded.has(id);
-    if (!isExcluded) fundings.push(Math.min(...inflows.map((t) => t.at)));
+    const fundedAt = Math.min(...inflows.map((t) => t.at));
+    if (!isExcluded) fundings.push(fundedAt);
 
-    escrows.push({ escrowId: id, platform: o.roles.platform, buyer: o.roles.approver, seller: o.roles.receiver, amount: o.amount, excluded: isExcluded });
+    escrows.push({ escrowId: id, platform: o.roles.platform, buyer: o.roles.approver, seller: o.roles.receiver, amount: o.amount, fundedAt: fundedAt * 1000, excluded: isExcluded });
     for (const t of o.transfers) if (t.from === id) transfers.push({ txHash: t.txHash, from: t.from, to: t.to, amount: t.amount });
     const txs = outflowTxs(o);
     if (o.flags.released && !o.flags.resolved) {
@@ -148,7 +154,9 @@ export function toMetricInput(fp: Footprint, observations: EscrowObservation[]):
   if (startSec === undefined) return { input: null, skipped };
   const start = startSec * 1000;
   const days = fp.windowDays ?? DEFAULT_WINDOW_DAYS;
-  return { input: { platform: fp.platform, window: { start, end: start + days * DAY_MS }, escrows, releases, resolutions, transfers }, skipped };
+  const end = start + days * DAY_MS;
+  const closeBy = end + (fp.closeDays ?? DEFAULT_CLOSE_DAYS) * DAY_MS;
+  return { input: { platform: fp.platform, window: { start, end, closeBy }, escrows, releases, resolutions, transfers }, skipped };
 }
 
 export function computeFootprintMetric(fp: Footprint, observations: EscrowObservation[]): FootprintMetricReport {
@@ -192,7 +200,7 @@ export function renderReport(r: FootprintMetricReport, opts: { perEscrow?: boole
   } else {
     const row = (pass: boolean, name: string, value: string | number) => `${pass ? 'PASS' : 'FAIL'}  ${name}: ${value}`;
     lines.push(
-      `window: ${m.window.start} .. ${m.window.end} (${r.windowDays} days)`,
+      `window: ${m.window.start} .. ${m.window.end} (${r.windowDays} days, funded); closed before ${m.window.closeBy}`,
       row(m.thresholds.volume, 'EURC released', `${m.volume} (floor >= 4000, target 7000)`),
       row(m.thresholds.escrows, 'escrows released or resolved to the seller', `${m.escrows} (floor >= 20, target 35)`),
       row(m.thresholds.buyers, 'distinct buyer wallets', `${m.distinctBuyers} (floor >= 12, target 20)`),

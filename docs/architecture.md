@@ -1,6 +1,6 @@
 # Architecture
 
-Version 0.9 of the design (guard v0.9: v0.8 rules plus in-contract TTL upkeep). Testnet only. This document describes an EURC payment
+Version 0.10 of the design (guard v0.10: v0.9 rules plus a seller dispute payout that no buyer leg can block, and mainnet-sized TTL upkeep; v0.9 added in-contract TTL upkeep to v0.8). Testnet only. This document describes an EURC payment
 rail for a marketplace that already takes cards: the buyer pays in Circle EURC on Stellar, the
 money sits in a non-custodial Trustless Work escrow until the buyer confirms receipt or, if the
 buyer stays silent, until 7 days after a recorded carrier delivery.
@@ -184,8 +184,9 @@ Behaviour relied on, from source and tested against both deployed Wasm files:
   exactly to the live balance; every recipient has both fees deducted pro rata. No deadline, no
   auto-refund.
 - `withdraw_remaining_funds` runs when the escrow is released, resolved **or merely disputed**,
-  pays any total up to the balance, and emits no Trustless Work event. The guard lets it pay only
-  the buyer.
+  pays any total up to the balance, needs no map that sums to the balance, and emits no Trustless
+  Work event. The guard lets it pay the buyer at any time and the seller only under the same
+  seller rules as a resolution, once (v0.10).
 - `fund_escrow(signer, expected_escrow, amount)` accepts any positive amount from any signer, any
   number of times, and fails if `expected_escrow` differs from the stored escrow.
 - Any role except the dispute resolver can open a dispute; the escrow stores only a `disputed`
@@ -233,12 +234,23 @@ fn __check_auth(env, payload: Hash<32>, sig: GuardSig, ctx: Vec<Context>) -> Res
 //   BREAK-GLASS: resolve_dispute; breakglass key; the map has exactly one key, E.buyer.
 //   RELEASE:     release_funds; release key; E not closed.
 //   RESOLVE:     resolve_dispute or withdraw_remaining_funds; resolver key;
-//     withdraw: every recipient == E.buyer.
-//     resolve: every recipient in {E.buyer, E.seller}; seller share <= E.amount (#28);
-//       a seller share needs E.funded_at and either
+//     every recipient in {E.buyer, E.seller}; seller share <= E.amount (#28);
+//     withdraw paying E.buyer alone: allowed at any time, closes nothing;
+//     otherwise E not closed (#17), and a seller share needs E.funded_at and either
 //       ResolveSeller: registry.verify(...) AND anchored_at > funded_at AND now >= anchored_at + delay, or
 //       Resolve: approved_at and disputed_at set, no contest, now >= max(both) + contest_window.
+//   A release, a resolution or a seller withdrawal closes E: the seller is paid at most once, never
+//   more than E.amount; only withdrawals to the buyer remain.
 ```
+
+**Seller payout no buyer can block (v0.10).** `resolve_dispute` needs a map that sums to the live
+balance. A buyer who removes their own EURC trustline (only the account owner can sign
+ChangeTrust, so the platform cannot restore it) and then sends 1 unit to the escrow forces a buyer
+leg into every resolution, and that leg reverts; a Circle freeze of the buyer has the same effect.
+`withdraw_remaining_funds` has no sum rule, so v0.10 lets the resolver pay the seller's share
+through it alone, under the same claim or approval rules, at most the escrow amount and only once;
+the remainder stays in the escrow for a later withdrawal to the buyer. Tests `x12`-`x14` (both
+Trustless Work lineages) cover it with a buyer account that has no trustline.
 
 The leaf is built inside the guard and bound to the escrow address, so a claim for one escrow
 never pays another. Encodings: [leaf-format.md](leaf-format.md). The signature covers Soroban's
@@ -248,19 +260,25 @@ why buyer and seller are read at registration. The 7-day wait uses the registry'
 time, which the platform cannot backdate. The guard has no upgrade path: a new version is a new
 contract used only for new escrows.
 
-**TTL upkeep (v0.9).** The guard keeps its own state alive. `register_escrow`, `contest` and
+**TTL upkeep (v0.9; mainnet-sized in v0.10).** The guard keeps its own state alive. `register_escrow`, `contest` and
 `__check_auth` extend the touched registration (`Reg`, persistent) and the guard's instance and
 code; `propose_keys`, `apply_keys`, `rotate_resolver` and the constructor extend the instance and
-code. Each extension is `extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO)`: an entry with 30 days
-(518,400 ledgers at 17,280 a day) or less left is extended to 60 days (1,036,800 ledgers); above
-that it is a no-op. The longest stretch the rules need without a touch is `delay` +
+code. Each extension is `extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO)`: an entry with 120 days
+(2,073,600 ledgers at 17,280 a day) or less left is extended to 150 days (2,592,000 ledgers); above
+that it is a no-op. The threshold equals mainnet's minimum persistent TTL (120 days; testnet's is
+120,960 ledgers, 7 days), so a fresh entry is extended at its first touch on either network.
+v0.9 used 30 and 60 days (518,400 / 1,036,800 ledgers), which run 7 read back on testnet but which
+would do nothing on mainnet for an entry's first 90 days; every new mainnet entry already starts
+with about 120 days of rent, paid at creation. The longest stretch the rules need without a touch is `delay` +
 `contest_window` (7 + 7 days), and `register_escrow` is permissionless, so anyone can top a
 registration up. The read-only views (`check_escrow`, `registration`) do not extend: they run by
 simulation, where an extension never reaches the ledger. A refused authorization fails the
-transaction, extension included. The upkeep changes no rule and writes no stored value; the
-claim registry's roots, the escrows and the Trustless Work Wasm code are still extended by the
-anchoring job. Tests `x08`-`x10` (both Trustless Work lineages) and `m03` (built Wasm) check it,
-and run 7 on testnet read the result back from the ledger
+transaction, extension included. The upkeep changes no rule and writes no stored value. The claim
+registry v0.10 extends its instance, and the root or revocation it reads, with the same values;
+the escrows, the registry's `Revoked` entries and the Trustless Work Wasm code are still extended by
+the anchoring job (an archived revocation makes `verify` fail closed until it is restored). Tests
+`x08`-`x11` (both Trustless Work lineages) and `m03`-`m04` (built Wasm; `x11` and `m04` on a
+mainnet-sized ledger) check it, and run 7 on testnet (v0.9 values) read the result back from the ledger
 ([testnet-proofs.md](testnet-proofs.md#run-7-guard-v09-with-ttl-upkeep-29-oct-2026-0927-to-0935-utc)).
 
 **Third-party dust.** Registration needs only a balance above zero, so dust can register an
@@ -320,19 +338,21 @@ All amounts are in 7-decimal units (1 EURC = 10,000,000 units).
 | Escrow layout or Wasm differs from what the guard decodes | Registration fails | `check_escrow` by simulation before any funding call |
 | Empty milestone status | The buyer can never approve | Precheck refuses it; every field final before the address is shown |
 | Underfunded escrow | Release would revert | Order stays unpaid; refunded to the buyer through a platform dispute |
-| Overfunded escrow, or third-party transfer | Excess stays after release | Resolutions rebuilt from the current balance; seller share capped (#28); after release `withdraw_remaining_funds` to the buyer only |
+| Overfunded escrow, or third-party transfer | Excess stays after release | Resolutions rebuilt from the current balance; seller share capped (#28); after release `withdraw_remaining_funds` to the buyer (a seller share after release is refused, #17) |
 | Seller (or a compromised platform key) disputes after the buyer approved | Release blocked | Approval path after the 7-day contest window, at the release's net, unless the buyer contested |
 | Escrow names another platform address (compromised checkout) | Platform fee leg would go elsewhere | Precheck and registration refuse it (#22): the guard authorises no exit, funds stay locked rather than paid out |
 | Platform appends a milestone to a funded escrow | Release blocked | Alert on any `update_escrow` of a registered escrow; recover by dispute and resolution |
-| Recipient has no EURC trustline | Payout reverts | Pre-flight trustline check before every release or resolution; re-sponsor |
+| Seller has no EURC trustline | Payout to the seller reverts | Pre-flight trustline check before every release or resolution; a removed trustline is restored only with the seller's own signature (ChangeTrust), then sponsored again |
+| Buyer removes their EURC trustline (or is frozen) and dusts the escrow | Every resolution has a reverting buyer leg | v0.10: the seller's share is paid alone through `withdraw_remaining_funds` (same rules, capped, once); the remainder waits for the buyer (tests `x12`-`x14`) |
 | Circle freezes an account, the escrow, or a fee account | Transfers fail | Alert; dispute; wait for unfreeze, then refund from the escrow |
 | v1 API rejects a contract address in a role | Guard cannot be set through the API | Deploy Trustless Work's same Wasm through its on-chain deployer (proven on testnet) |
 | Depth-32 verify inside `__check_auth` exceeds budget | Seller resolution blocked | Measured about 4.5M instructions locally, 4.94M simulated on testnet, against a 400M limit |
 | Claim not yet anchored | Seller resolution refused (by design) | Anchor on a schedule; alert on queued resolutions |
-| Registry, guard, registration or escrow archived | Calls need a restore | The guard extends its instance and every registration it touches (v0.9: to 60 days once 30 or fewer remain); the anchoring job extends registry roots, escrows and Wasm code; restore is automatic since Protocol 23. Archival is a liveness issue only: a `Reg` is persistent storage, archived and restorable, never deleted and re-created |
+| Registry, guard, registration or escrow archived | Calls need a restore | The guard extends its instance and every registration it touches (v0.10: to 150 days once 120 or fewer remain, above mainnet's 120-day minimum; v0.9's 30/60 days would do nothing on mainnet), and the registry v0.10 its instance, roots and revocations; the anchoring job extends registry roots and revocations, escrows and Wasm code; restore is automatic since Protocol 23. Archival is a liveness issue only: a `Reg` is persistent storage, archived and restorable, never deleted and re-created |
 | Release key leaked | Can co-sign releases | Still needs the buyer's approval; pays only the fixed seller; rotate through the timelock |
 | Resolver key leaked | Can resolve disputes | Buyer or seller only, seller capped at the amount, seller needs a claim plus 7 days or uncontested approval; cannot open a dispute; rotate at once |
-| Issuer key leaked; forged claims anchored | Seller payouts on disputed escrows after 7 days | Alert on every anchor; offline revoker revokes the batch within 7 days |
-| RPC event gap | Missed state change | Store events beyond RPC retention; periodic full re-read of open escrows |
+| Issuer key leaked; forged claims anchored | Seller payouts on disputed escrows after 7 days | Alert on every anchor; offline revoker revokes the batch within 7 days; the issuer is a multisig G-account whose leaked signer is removed at the account level; if the account must change, a new registry and guard serve new escrows while the revoker watches the old registry |
+| RPC event gap | Missed state change | Store events beyond RPC retention; periodic full re-read of open escrows; `getEvents` kept inside RPC limits (5 contract IDs, 5 topic filters, start at the oldest retained ledger, page to the latest) |
+| Transaction dropped, delayed or out of sequence | Payout not applied, or applied twice if blindly re-sent | Hash saved before sending and looked up before a re-send; `TRY_AGAIN_LATER` and `txBadSeq` (sequence still behind) re-sent; polling until a ledger closes after `maxTime`, then expired and rebuilt (`RpcSubmitter`, `packages/escrow`) |
 | Testnet reset | Registry, guard and escrows wiped | `scripts/testnet/deploy.ts` redeploys; [verification.md](verification.md) keeps the tx record |
 | Trustless Work v1 deprecated | Unplanned migration | New guard build with v2 types, for new escrows only |

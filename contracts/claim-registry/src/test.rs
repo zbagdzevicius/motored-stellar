@@ -5,7 +5,10 @@ extern crate std;
 use super::*;
 use sha2::{Digest, Sha256};
 use soroban_sdk::{
-    testutils::{Address as _, Ledger, MockAuth, MockAuthInvoke},
+    testutils::{
+        storage::{Instance as _, Persistent as _},
+        Address as _, Ledger, MockAuth, MockAuthInvoke,
+    },
     IntoVal,
 };
 use std::vec::Vec as StdVec;
@@ -18,8 +21,21 @@ struct Ctx {
 }
 
 fn setup() -> Ctx {
+    setup_min(None)
+}
+
+/// Mainnet `min_persistent_ttl` (120 days of 5 s ledgers).
+const MAINNET_MIN_PERSISTENT_TTL: u32 = 2_073_600;
+
+/// `min_persistent`: the ledger's minimum persistent TTL (every new entry starts there).
+fn setup_min(min_persistent: Option<u32>) -> Ctx {
     let env = Env::default();
-    env.ledger().with_mut(|l| l.timestamp = 1_800_000_000);
+    env.ledger().with_mut(|l| {
+        l.timestamp = 1_800_000_000;
+        if let Some(m) = min_persistent {
+            l.min_persistent_entry_ttl = m;
+        }
+    });
     let issuer = Address::generate(&env);
     let revoker = Address::generate(&env);
     let id = env.register(ClaimRegistry, (issuer.clone(), revoker.clone()));
@@ -29,6 +45,21 @@ fn setup() -> Ctx {
         c,
         issuer,
         revoker,
+    }
+}
+
+impl Ctx {
+    fn ttl(&self, k: &Key) -> u32 {
+        self.env.as_contract(&self.c.address, || {
+            self.env.storage().persistent().get_ttl(k)
+        })
+    }
+    fn instance_ttl(&self) -> u32 {
+        self.env
+            .as_contract(&self.c.address, || self.env.storage().instance().get_ttl())
+    }
+    fn advance_ledgers(&self, n: u32) {
+        self.env.ledger().with_mut(|l| l.sequence_number += n);
     }
 }
 
@@ -247,4 +278,65 @@ fn proof_length_is_bounded_at_32() {
         t.c.try_verify(&1, &leaf, &p, &0),
         Err(Ok(Error::ProofTooLong))
     );
+}
+
+#[test]
+fn ttl_values_cover_the_mainnet_minimum() {
+    // v0.8 used 17,280 / 34,560 ledgers, under every network's minimum: a no-op.
+    const {
+        assert!(TTL_THRESHOLD >= MAINNET_MIN_PERSISTENT_TTL);
+        assert!(TTL_EXTEND_TO > TTL_THRESHOLD);
+        // under mainnet's maximum entry TTL
+        assert!(TTL_EXTEND_TO <= 180 * LEDGERS_PER_DAY);
+    }
+}
+
+#[test]
+fn fresh_root_revocation_and_instance_are_extended_on_a_mainnet_sized_ledger() {
+    let t = setup_min(Some(MAINNET_MIN_PERSISTENT_TTL));
+    t.env.mock_all_auths();
+    assert_eq!(
+        t.instance_ttl(),
+        TTL_EXTEND_TO,
+        "constructor extends the instance"
+    );
+    t.c.anchor(&1, &b32(&t.env, [1; 32]));
+    assert_eq!(t.ttl(&Key::Root(1)), TTL_EXTEND_TO);
+    t.c.revoke(&2);
+    assert_eq!(t.ttl(&Key::Revoked(2)), TTL_EXTEND_TO);
+}
+
+#[test]
+fn verify_and_anchored_at_extend_an_aged_root_and_revocation() {
+    let t = setup_min(Some(MAINNET_MIN_PERSISTENT_TTL));
+    t.env.mock_all_auths();
+    let leaves = sample_leaves();
+    let (root, proofs) = tree(&leaves);
+    t.c.anchor(&1, &b32(&t.env, root));
+    t.c.anchor(&2, &b32(&t.env, root));
+    t.c.revoke(&2);
+    let age = TTL_EXTEND_TO - TTL_THRESHOLD + 1_000;
+    // verify extends the root it reads, and the instance
+    t.advance_ledgers(age);
+    assert!(t.ttl(&Key::Root(1)) < TTL_THRESHOLD && t.instance_ttl() < TTL_THRESHOLD);
+    let leaf = b32(&t.env, leaves[2]);
+    let p = proof_vec(&t.env, &proofs[2]);
+    assert!(t.c.verify(&1, &leaf, &p, &2));
+    assert_eq!(t.ttl(&Key::Root(1)), TTL_EXTEND_TO);
+    assert_eq!(t.instance_ttl(), TTL_EXTEND_TO);
+    // anchored_at extends it too
+    t.advance_ledgers(age);
+    assert!(t.ttl(&Key::Root(1)) < TTL_THRESHOLD);
+    t.c.anchored_at(&1);
+    assert_eq!(t.ttl(&Key::Root(1)), TTL_EXTEND_TO);
+    // a revoked batch: verify (Ok(false)) extends the revocation entry
+    assert!(t.ttl(&Key::Revoked(2)) < TTL_THRESHOLD);
+    assert!(!t.c.verify(&2, &leaf, &p, &2));
+    assert_eq!(t.ttl(&Key::Revoked(2)), TTL_EXTEND_TO);
+    // anchored_at on a revoked batch fails, and the failure rolls its extension back
+    t.advance_ledgers(age);
+    let r0 = t.ttl(&Key::Revoked(2));
+    assert!(r0 < TTL_THRESHOLD);
+    assert_eq!(t.c.try_anchored_at(&2), Err(Ok(Error::Revoked)));
+    assert_eq!(t.ttl(&Key::Revoked(2)), r0);
 }

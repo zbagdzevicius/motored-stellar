@@ -10,6 +10,7 @@ import {
   guardRegistrationKey,
   instanceKey,
   random,
+  registryRevokedKey,
   registryRootKey,
   sacBalanceKey,
   upkeepKeys,
@@ -48,6 +49,17 @@ describe("TTL upkeep", () => {
     expect(rk.durability).toEqual(xdr.ContractDataDurability.persistent);
     // Guard registration key is DK::Esc(Address), as read on testnet by the lab.
     expect(scValToNative(xdr.expectUnionVariant(guardRegistrationKey(guard, e1), "contractData").contractData.key)).toEqual(["Esc", e1]);
+  });
+
+  it("extends revocation entries alongside roots", () => {
+    const registry = C();
+    const keys = upkeepKeys({ registry: { contractId: registry, batchIds: [7n, 8n], revokedBatchIds: [7n, 7n] } });
+    const expected = [instanceKey(registry), registryRootKey(registry, 7n), registryRootKey(registry, 8n), registryRevokedKey(registry, 7n)];
+    expect(keys.map((k) => k.toXDR("base64"))).toEqual(expected.map((k) => k.toXDR("base64")));
+    // Key::Revoked(u64) = vec[symbol("Revoked"), u64], persistent (contract `revoke`).
+    const rk = xdr.expectUnionVariant(registryRevokedKey(registry, 7n), "contractData").contractData;
+    expect(scValToNative(rk.key)).toEqual(["Revoked", 7n]);
+    expect(rk.durability).toEqual(xdr.ContractDataDurability.persistent);
   });
 
   it("puts the keys into a read-only footprint of one ExtendFootprintTTL op", () => {

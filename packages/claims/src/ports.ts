@@ -24,6 +24,10 @@ export interface Signer {
 export interface SubmitResult {
   hash: string;
   status: "SUCCESS" | "FAILED" | "REJECTED" | "TIMEOUT";
+  /** Why it did not land, when known (a result code such as `txBadSeq`, or `expired`). */
+  reason?: string;
+  /** True when this transaction can no longer land, so rebuilding and re-signing cannot double-apply it. */
+  retryable?: boolean;
 }
 
 /** Sends a signed transaction and waits for its outcome. */

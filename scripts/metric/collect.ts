@@ -76,9 +76,21 @@ export class RpcEscrowStateReader implements EscrowStateReader {
  * decode with this shape (docs/verification.md, metric run; docs/runs/metric-observations-runs-4-5.json).
  */
 export class RpcEventSource implements EventSource {
-  constructor(private readonly server: Pick<rpc.Server, 'getEvents'>, private readonly pageLimit = 1000) {}
+  constructor(private readonly server: Pick<rpc.Server, 'getEvents'> & Partial<Pick<rpc.Server, 'getHealth'>>, private readonly pageLimit = 1000) {}
 
   async transfers(token: string, accounts: Set<string>, startLedger: number): Promise<Transfer[]> {
+    // One contract id (the token) per filter, within RPC's limit of 5. The start ledger must lie in
+    // the RPC's retention window. It is not clamped: dropping the window's start would undercount
+    // the metric, so a start before `oldestLedger` fails with a pointer to `--observations`.
+    if (!Number.isInteger(startLedger) || startLedger < 1) throw new RangeError(`startLedger must be a ledger >= 1 (got ${startLedger})`);
+    if (this.server.getHealth) {
+      const h = await this.server.getHealth();
+      if (startLedger < h.oldestLedger) {
+        throw new RangeError(
+          `startLedger ${startLedger} is older than this RPC's oldest ledger ${h.oldestLedger}: read the window from an archive export with --observations`,
+        );
+      }
+    }
     const transferTopic = xdr.ScVal.scvSymbol('transfer').toXDR('base64');
     const out: Transfer[] = [];
     let cursor: string | undefined;

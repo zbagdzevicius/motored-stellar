@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   computeMetric,
+  METRIC_CLOSE_DAYS,
   METRIC_TARGET,
   METRIC_THRESHOLDS,
+  METRIC_WINDOW_DAYS,
   type MetricEscrow,
   type MetricInput,
   type MetricResolution,
@@ -26,6 +28,7 @@ function escrows(n: number, amount: string, buyers: number, sellers: number, pre
     buyer: `G_BUYER_${i % buyers}`,
     seller: `G_SELLER_${i % sellers}`,
     amount: eur(amount),
+    fundedAt: START + i * 1000,
   }));
 }
 
@@ -148,11 +151,40 @@ describe("Tranche 3 metric", () => {
     b.platform = "G_OTHER_PLATFORM";
     c.excluded = true;
     const rel = releases(es);
-    const last = rel[3];
-    if (last) last.closedAt = WINDOW.end; // end is exclusive
+    d.fundedAt = WINDOW.end; // the funding window's end is exclusive
     const m = computeMetric(input({ escrows: es, releases: rel }));
     expect(m.escrows).toBe(1);
     expect(m.excluded).toBe(1);
+  });
+
+  it("uses a 45-day funding window with 14 more days to close", () => {
+    expect([METRIC_WINDOW_DAYS, METRIC_CLOSE_DAYS]).toEqual([45, 14]);
+    const m = computeMetric(input({}));
+    expect(m.window.closeBy).toBe(new Date(WINDOW.end + 14 * DAY).toISOString());
+  });
+
+  it("counts an escrow funded late in the window that closes after the window, before the deadline", () => {
+    const [late, tooLate, preWindow] = escrows(3, "100", 3, 3);
+    if (!late || !tooLate || !preWindow) throw new Error("fixture");
+    late.fundedAt = WINDOW.end - DAY; // day 44
+    tooLate.fundedAt = WINDOW.end - DAY;
+    preWindow.fundedAt = START - DAY; // funded before the window, released inside it
+    const rel = [
+      { escrowId: late.escrowId, txHash: "rel-late", closedAt: WINDOW.end + 14 * DAY - 1 },
+      { escrowId: tooLate.escrowId, txHash: "rel-too-late", closedAt: WINDOW.end + 14 * DAY },
+      { escrowId: preWindow.escrowId, txHash: "rel-pre", closedAt: START + DAY },
+    ];
+    const m = computeMetric(input({ escrows: [late, tooLate, preWindow], releases: rel }));
+    expect(m.escrows).toBe(1);
+    expect(m.volumeUnits).toBe(eur("100"));
+  });
+
+  it("a resolution after the window counts when the escrow was funded inside it", () => {
+    const [e] = escrows(1, "210", 1, 1);
+    if (!e) throw new Error("fixture");
+    const r = resolution(e, e.amount, true, WINDOW.end + 10 * DAY);
+    const m = computeMetric(input({ escrows: [e], resolutions: [r.res], transfers: r.transfers }));
+    expect(m.escrows).toBe(1);
   });
 
   it("reports the stretch goal without making it a condition", () => {
