@@ -190,7 +190,7 @@ export class BridgeRampProvider implements RampProvider {
     };
     if (input.firstName !== undefined) body.first_name = input.firstName;
     if (input.lastName !== undefined) body.last_name = input.lastName;
-    // TODO(verify): `business_name` on a business-owned EUR external account
+    // TODO(verify, D5): `business_name` on a business-owned EUR external account
     // (it appears as a response field in the saved docs, not in a request example).
     if (input.businessName !== undefined) body.business_name = input.businessName;
     if (input.address.streetLine2 !== undefined) body.address.street_line_2 = input.address.streetLine2;

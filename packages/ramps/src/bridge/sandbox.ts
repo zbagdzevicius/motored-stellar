@@ -73,7 +73,7 @@ export class BridgeSandbox {
   ): Promise<SimulateDepositResult> {
     const raw = await this.#provider.http.post<{ success?: boolean; drain_id?: string }>(
       `/customers/${seg(customerId)}/liquidation_addresses/${seg(liquidationAddressId)}/simulate_deposit`,
-      // TODO(verify): amount precision the sandbox accepts for EURC (the documented example is "100.00").
+      // TODO(verify, D5): amount precision the sandbox accepts for EURC (the documented example is "100.00").
       { currency: "eurc", amount: formatUnits(units) },
       idempotencyKey,
     );

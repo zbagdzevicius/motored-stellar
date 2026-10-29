@@ -22,7 +22,9 @@
  *       source, ChangeTrust(EURC) with the default limit, End by the source);
  *     - a classic EURC payment from the source to the source's stored ramp
  *       destination (address and memo must match).
- *     Soroban calls may carry only source-account authorisation entries.
+ *     Soroban calls may carry only source-account authorisation entries;
+ *     address entries are refused whether they arrive as the legacy variant
+ *     or as `sorobanCredentialsAddressV2` (CAP-71).
  *
  * Everything else (payments to arbitrary addresses, SetOptions, extra
  * operations, other contracts or functions, an unregistered source, a fee

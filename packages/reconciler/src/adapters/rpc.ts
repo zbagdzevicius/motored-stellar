@@ -44,14 +44,22 @@ export interface RpcChainReaderOptions {
   pageSize?: number;
   /** Allow plain http (local RPC only). */
   allowHttp?: boolean;
+  /**
+   * RPC client to use instead of one built from `rpcUrl` (tests inject a
+   * scripted one). Must implement the calls this reader makes.
+   */
+  server?: RpcReaderServer;
 }
 
+/** The Soroban RPC calls this reader makes. */
+export type RpcReaderServer = Pick<rpc.Server, "getHealth" | "getEvents" | "getLedgerEntries" | "getTransaction">;
+
 export class RpcChainReader implements ChainReader {
-  private readonly server: rpc.Server;
+  private readonly server: RpcReaderServer;
   private readonly pageSize: number;
 
   constructor(private readonly opts: RpcChainReaderOptions) {
-    this.server = new rpc.Server(opts.rpcUrl, { allowHttp: opts.allowHttp ?? false });
+    this.server = opts.server ?? new rpc.Server(opts.rpcUrl, { allowHttp: opts.allowHttp ?? false });
     this.pageSize = opts.pageSize ?? 200;
   }
 
@@ -72,9 +80,9 @@ export class RpcChainReader implements ChainReader {
   }
 
   async getBalance(holder: string): Promise<EurcBalance> {
-    // TODO(verify): SAC balance storage layout. Expected per the Stellar Asset
-    // Contract: persistent key Vec[Symbol("Balance"), Address] holding
-    // { amount: i128, authorized: bool, clawback: bool }. This applies to
+    // SAC balance storage layout: persistent key Vec[Symbol("Balance"), Address] holding
+    // { amount: i128, authorized: bool, clawback: bool }. Verified on testnet in run 7
+    // (29 Oct 2026): getLedgerEntries on the XEUR SAC returned exactly this for two run 7 escrows. This applies to
     // contract holders (an escrow); classic accounts keep EURC in a trustline.
     const key = xdr.LedgerKey.contractData(
       new xdr.LedgerKeyContractData({
@@ -94,9 +102,9 @@ export class RpcChainReader implements ChainReader {
     const health = await this.server.getHealth();
     const transferSym = xdr.ScVal.scvSymbol("transfer").toXDR("base64");
     const who = new Address(holder).toScVal().toXDR("base64");
-    // TODO(verify): SAC transfer topics are [transfer, from, to, asset] (4
-    // segments). Confirm the segment count on the current protocol before
-    // relying on the "*" wildcards below.
+    // SAC transfer topics are [transfer, from, to, asset] (4 segments). Verified on
+    // testnet in runs 4 to 7: the escrow transfers matched a 4-segment filter
+    // (docs/runs/metric-observations-runs-4-6.json).
     const filters: rpc.Api.EventFilter[] = [
       {
         type: "contract",
@@ -124,14 +132,21 @@ export class RpcChainReader implements ChainReader {
         });
         if (t) out.push(t);
       }
-      if (page.events.length < this.pageSize) break;
+      // A short page does not mean the end: the RPC scans a bounded ledger range per
+      // request and returns a cursor at the end of that range (seen on testnet 29 Oct 2026,
+      // run 7 metric: the first page held 23 events and stopped about 10,000 ledgers in,
+      // the second held the run 6 and run 7 transfers). Same rule as
+      // scripts/metric/collect.ts: stop only when the cursor stops moving, or when the
+      // page is short and the cursor has reached the RPC's latest ledger.
+      if (!page.cursor || page.cursor === cursor) break;
+      if (page.events.length < this.pageSize && eventCursorLedger(page.cursor) >= page.latestLedger) break;
       cursor = page.cursor;
     }
     return out;
   }
 
   async getTxStatus(txHash: string): Promise<TxStatus> {
-    // TODO(verify): RPC also keeps transactions for a limited window; an exit
+    // TODO(verify, D12 indexer): RPC also keeps transactions for a limited window; an exit
     // older than that reads as not_found. Use an indexer for old exits.
     const res = await this.server.getTransaction(txHash);
     switch (res.status) {
@@ -231,9 +246,16 @@ export function decodeTwFund(raw: RawRpcEvent): {
   };
 }
 
+/** Ledger sequence encoded in an RPC event cursor (`<toid>-<index>`, TOID ledger in the high 32 bits). */
+export function eventCursorLedger(cursor: string): number {
+  const toid = cursor.split("-")[0];
+  if (!toid || !/^\d+$/.test(toid)) return Number.POSITIVE_INFINITY;
+  return Number(BigInt(toid) >> 32n);
+}
+
 /**
  * Decode a SAC `transfer` event. Topics: [transfer, from, to, asset]. Data is
- * an i128 amount, or (TODO(verify), CAP-67 muxed form) a map with `amount`.
+ * an i128 amount, or (TODO(verify, D5), CAP-67 muxed form, not yet seen live) a map with `amount`.
  */
 export function decodeTransfer(ev: {
   topic: xdr.ScVal[];

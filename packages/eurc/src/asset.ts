@@ -37,7 +37,7 @@ export const EURC_MAINNET_SAC = "CDTKPWPLOURQA2SGTKTUQOWRCBZEORB4BWBOMJ3D3ZTQQSG
  * once. `auth_revocable=true` means the issuer can freeze a trustline (the
  * "Circle freeze" case in docs/threat-model.md). Clawback is not enabled.
  *
- * TODO(verify): issuer flags can change; re-read Horizon before mainnet.
+ * TODO(verify, D10 mainnet cutover): issuer flags can change; re-read Horizon before mainnet.
  */
 export const EURC_MAINNET_ISSUER_FLAGS = Object.freeze({
   auth_required: false,

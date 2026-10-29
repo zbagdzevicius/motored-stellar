@@ -104,7 +104,8 @@ export function decodeEvent(raw: RawContractEvent): DecodedEvent {
     case 'transfer': {
       // SAC transfer: topics [transfer, from, to, asset?]; data is the i128 amount,
       // or (CAP-67, muxed destinations) a map with `amount`.
-      // TODO(verify): the map form `{ amount, to_muxed_id }` against a live muxed transfer.
+      // TODO(verify, D5): the map form `{ amount, to_muxed_id }` against a live muxed transfer
+      // (no run so far sent to a muxed address; the Bridge sandbox run in D5 is the first that may).
       const from = topics[1];
       const to = topics[2];
       if (typeof from !== 'string' || typeof to !== 'string') break;
@@ -127,8 +128,9 @@ export function twTopicFilters(topics: readonly TwEventTopic[] = TW_EVENT_TOPICS
 
 /**
  * RPC topic filter for token transfers out of `escrow`: [transfer, from=escrow, *, *].
- * TODO(verify): SAC transfer events carry 4 topics since Protocol 23 (asset last);
- * older events had 3. Add a 3-segment filter if reading pre-P23 history.
+ * SAC transfer events carry 4 topics since Protocol 23 (asset last). Verified on testnet in
+ * runs 4 to 7: every escrow transfer matched a 4-segment filter (docs/runs/metric-observations-runs-4-6.json,
+ * metric-observations-run-7.json). Older events had 3: add a 3-segment filter for pre-P23 history.
  */
 export function transferOutFilter(escrowContractId: string): string[] {
   return [symbolTopic('transfer'), addressTopic(escrowContractId), '*', '*'];

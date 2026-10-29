@@ -120,25 +120,49 @@ export function cloneTransaction(tx: Transaction): Transaction {
 /**
  * Builds the Soroban authorization preimage for an address-credential entry,
  * exactly as the network (and `authorizeEntry` in stellar-base) does:
- * `ENVELOPE_TYPE_SOROBAN_AUTHORIZATION { networkId, nonce, signatureExpirationLedger, invocation }`.
+ *
+ * - legacy `sorobanCredentialsAddress`:
+ *   `ENVELOPE_TYPE_SOROBAN_AUTHORIZATION { networkId, nonce, signatureExpirationLedger, invocation }`;
+ * - `sorobanCredentialsAddressV2` (CAP-71, returned by testnet RPC from 29 Oct 2026):
+ *   `ENVELOPE_TYPE_SOROBAN_AUTHORIZATION_WITH_ADDRESS { networkId, nonce, signatureExpirationLedger, address, invocation }`,
+ *   which also binds the signing address.
+ *
+ * Source-account credentials need no separate signature, and credentials with
+ * delegates are not used by any flow here; both are refused.
  */
 export function buildAuthEntryPreimage(
   entry: xdr.SorobanAuthorizationEntry,
   networkPassphrase: string,
 ): xdr.HashIdPreimage {
   const credentials = entry.credentials;
-  if (credentials.type !== 'sorobanCredentialsAddress') {
+  const networkId = hash(Buffer.from(networkPassphrase));
+  if (credentials.type === 'sorobanCredentialsAddress') {
+    const addr = credentials.address;
+    return xdr.HashIdPreimage.envelopeTypeSorobanAuthorization(
+      new xdr.HashIdPreimageSorobanAuthorization({
+        networkId,
+        nonce: addr.nonce,
+        invocation: entry.rootInvocation,
+        signatureExpirationLedger: addr.signatureExpirationLedger,
+      }),
+    );
+  }
+  if (credentials.type === 'sorobanCredentialsAddressV2') {
+    const addr = credentials.addressV2;
+    return xdr.HashIdPreimage.envelopeTypeSorobanAuthorizationWithAddress(
+      new xdr.HashIdPreimageSorobanAuthorizationWithAddress({
+        networkId,
+        nonce: addr.nonce,
+        signatureExpirationLedger: addr.signatureExpirationLedger,
+        address: addr.address,
+        invocation: entry.rootInvocation,
+      }),
+    );
+  }
+  if (credentials.type === 'sorobanCredentialsSourceAccount') {
     throw new WalletError('UNSUPPORTED', 'auth entry uses source-account credentials and needs no separate signature');
   }
-  const addr = credentials.address;
-  return xdr.HashIdPreimage.envelopeTypeSorobanAuthorization(
-    new xdr.HashIdPreimageSorobanAuthorization({
-      networkId: hash(Buffer.from(networkPassphrase)),
-      nonce: addr.nonce,
-      invocation: entry.rootInvocation,
-      signatureExpirationLedger: addr.signatureExpirationLedger,
-    }),
-  );
+  throw new WalletError('UNSUPPORTED', `auth entry credential type ${credentials.type} is not supported`);
 }
 
 /** The 32 bytes an auth-entry signer signs: SHA-256 of the preimage XDR. */
@@ -156,7 +180,9 @@ export interface AuthEntrySigner {
 /**
  * Signs a Soroban authorization entry with a wallet, setting its expiration
  * ledger. Delegates the XDR assembly to stellar-sdk's `authorizeEntry`, which
- * also re-verifies the signature before returning.
+ * also re-verifies the signature before returning. Legacy and V2 address
+ * credentials are both signed and kept in the variant they arrived in (the
+ * SDK picks the matching preimage, as `buildAuthEntryPreimage` does).
  *
  * Note: buyer and seller calls in the escrow flow use the wallet as the
  * transaction source (source-account credentials), so they only need

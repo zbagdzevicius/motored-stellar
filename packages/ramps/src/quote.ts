@@ -14,7 +14,7 @@
  * gateway. Rates are expressed in parts per million so 0.1% is 1000 ppm and
  * no floating point is involved.
  *
- * TODO(verify): the gateway's exact fee composition and rounding. Its docs
+ * TODO(verify, D5): the gateway's exact fee composition and rounding. Its docs
  * list a developer fee and an exchange fee (both in the source currency) and a
  * gas fee (in the destination currency, "usually 0"), and minimum amounts per
  * route. This model rounds every percentage fee UP to the next cent, which is
@@ -58,7 +58,7 @@ export function onRampFeeCents(grossCents: bigint, schedule: FeeSchedule): bigin
  * EURC base units delivered for a SEPA deposit of `grossCents` under the
  * schedule, at face value (1 EUR = 1 EURC). Never negative.
  *
- * TODO(verify): EUR -> EURC is treated as 1:1 at face value with any spread
+ * TODO(verify, D5): EUR -> EURC is treated as 1:1 at face value with any spread
  * carried in `percentPpm` as the exchange fee.
  */
 export function onRampNetUnits(grossCents: bigint, schedule: FeeSchedule): bigint {
@@ -122,7 +122,7 @@ export interface OffRampQuote {
 /**
  * What a seller receives by SEPA for an off-ramp of `units` EURC.
  *
- * TODO(verify): how the gateway treats sub-cent EURC dust on an off-ramp.
+ * TODO(verify, D5): how the gateway treats sub-cent EURC dust on an off-ramp.
  * Reported here as `dustUnits` and excluded from the payout.
  */
 export function quoteOffRamp(units: bigint, schedule: FeeSchedule): OffRampQuote {

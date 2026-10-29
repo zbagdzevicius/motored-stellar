@@ -25,7 +25,7 @@ import {
   transactionHashHex,
   verifyRawSignature,
 } from '../src/index.js';
-import { NET, naclRawSign, sampleInvocation, sorobanTxFrom, sponsoredCreateTx } from './helpers.js';
+import { NET, entryFor, naclRawSign, sampleInvocation, sorobanTxFrom, sponsoredCreateTx } from './helpers.js';
 
 describe('raw-hash signing -> DecoratedSignature', () => {
   it('produces a signature that Keypair.verify accepts over the tx hash', () => {
@@ -133,6 +133,51 @@ describe('auth-entry signing', () => {
     expect(StrKey.encodeEd25519PublicKey(Buffer.from(sig!.public_key))).toBe(user.publicKey());
     expect(user.verify(Buffer.from(payload), Buffer.from(sig!.signature))).toBe(true);
     expect(Buffer.from(payload).equals(hash(buildAuthEntryPreimage(entry, NET).toXdr()))).toBe(true);
+  });
+
+  it('signs a V2 (CAP-71) entry over the address-bound preimage and keeps it V2', async () => {
+    const user = Keypair.random();
+    const seed = await entryFor(user.publicKey(), { v2: true });
+    expect(seed.credentials.type).toBe('sorobanCredentialsAddressV2');
+    const wallet = new RawHashWallet({
+      address: user.publicKey(),
+      signRawHash: async ({ hash: h }) => naclRawSign(user, h),
+    });
+
+    const entry = await authorizeEntryWithWallet(seed, wallet, 6_000);
+    expect(entry.credentials.type).toBe('sorobanCredentialsAddressV2');
+    const creds = xdr.expectUnionVariant(entry.credentials, 'sorobanCredentialsAddressV2').addressV2;
+    expect(creds.signatureExpirationLedger).toBe(6_000);
+
+    const preimage = buildAuthEntryPreimage(entry, NET);
+    expect(preimage.type).toBe('envelopeTypeSorobanAuthorizationWithAddress');
+    const payload = authEntryPayload(preimage);
+    const [sig] = scValToNative(creds.signature) as Array<{ public_key: Buffer; signature: Buffer }>;
+    expect(user.verify(Buffer.from(payload), Buffer.from(sig!.signature))).toBe(true);
+  });
+
+  it('a V2 signature does not verify as the legacy preimage of the same entry', async () => {
+    const user = Keypair.random();
+    const v2 = await entryFor(user.publicKey(), { v2: true });
+    const legacy = await entryFor(user.publicKey());
+    // Same nonce and invocation, legacy credentials: the payloads must differ.
+    const c = xdr.expectUnionVariant(v2.credentials, 'sorobanCredentialsAddressV2').addressV2;
+    const sameAsLegacy = new xdr.SorobanAuthorizationEntry({
+      credentials: xdr.SorobanCredentials.sorobanCredentialsAddress(c),
+      rootInvocation: v2.rootInvocation,
+    });
+    expect(legacy.credentials.type).toBe('sorobanCredentialsAddress');
+    const p2 = Buffer.from(authEntryPayload(buildAuthEntryPreimage(v2, NET)));
+    const p1 = Buffer.from(authEntryPayload(buildAuthEntryPreimage(sameAsLegacy, NET)));
+    expect(p2.equals(p1)).toBe(false);
+  });
+
+  it('refuses source-account credentials', () => {
+    const entry = new xdr.SorobanAuthorizationEntry({
+      credentials: xdr.SorobanCredentials.sorobanCredentialsSourceAccount(),
+      rootInvocation: sampleInvocation(),
+    });
+    expect(() => buildAuthEntryPreimage(entry, NET)).toThrow(WalletError);
   });
 
   it('is rejected when the wallet signs with a key that does not own the address', async () => {

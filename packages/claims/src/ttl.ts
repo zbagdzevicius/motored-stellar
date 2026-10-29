@@ -54,8 +54,8 @@ export const guardRegistrationKey = (guard: string, escrow: string): xdr.LedgerK
  * The balance entry of `holder` in a Stellar Asset Contract: persistent
  * `Balance(holder)`. Only contract holders (C...) have one; account holders keep
  * their balance in a classic trustline.
- * TODO(verify): key shape taken from the SAC's DataKey::Balance(Address); confirm
- * against a live getLedgerEntries read before relying on it in production.
+ * Key shape from the SAC's DataKey::Balance(Address). Verified in run 7 (29 Oct 2026): a live
+ * getLedgerEntries read with this key returned { amount, authorized, clawback } for run 7 escrows.
  */
 export const sacBalanceKey = (sac: string, holder: string): xdr.LedgerKey =>
   contractDataKey(sac, variant("Balance", new Address(holder).toScVal()));
@@ -98,8 +98,9 @@ export function upkeepKeys(t: UpkeepTargets): xdr.LedgerKey[] {
 
 /** Splits keys into footprints of at most `max` entries (one transaction each). */
 export function chunkKeys(keys: xdr.LedgerKey[], max = 25): xdr.LedgerKey[][] {
-  // TODO(verify): 25 is a conservative default; the per-transaction read-entry limit
-  // is a network setting and should be read from the live config.
+  // 25 is a conservative default; the per-transaction read-entry limit is a network
+  // setting (testnet `txMaxDiskReadEntries` 200, read 29 Oct 2026, run 7).
+  // TODO(verify, D10 mainnet cutover): read the mainnet value from the live config.
   if (!Number.isInteger(max) || max < 1) throw new RangeError("max must be >= 1");
   const out: xdr.LedgerKey[][] = [];
   for (let i = 0; i < keys.length; i += max) out.push(keys.slice(i, i + max));

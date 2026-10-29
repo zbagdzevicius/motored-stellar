@@ -8,8 +8,9 @@ import { eur, type Units } from "./units.js";
  * inspected (`GBWWSOAT...KSZN`). Documented reference only: pass the fee
  * account of the Wasm you actually deploy against.
  *
- * TODO(verify): confirm which network's Wasm hard-codes this address and the
- * fee account of the testnet Wasm (hash 7c3f7b2a...) before relying on it.
+ * Verified: the mainnet Wasm (96d51751...) hard-codes it (guard unit test m01); the testnet
+ * Wasm (7c3f7b2a...) hard-codes none and takes `trustless_work_address` as an argument
+ * (runs 4 to 7; run 6 landed the wrong-address refusal BadFeeAddr on chain).
  */
 export const TW_V1_FEE_ACCOUNT_REFERENCE = "GBWWSOATPLIC72ZBOIM7WJCT7VCAHNWW4QUBZ2H4FORMCCIUM5ZVKSZN";
 

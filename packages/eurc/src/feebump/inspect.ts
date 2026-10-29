@@ -57,7 +57,12 @@ export function scBytesN(v: xdr.ScVal | undefined, n: number): Buffer | null {
   return b.length === n ? b : null;
 }
 
-/** True when every auth entry uses source-account credentials. */
+/**
+ * True when every auth entry uses source-account credentials. Address
+ * credentials of every variant (legacy `sorobanCredentialsAddress`, CAP-71
+ * `sorobanCredentialsAddressV2`, with delegates) are refused alike, so the
+ * policy gives V2 entries exactly the answer it gives legacy ones.
+ */
 export function onlySourceAccountAuth(auth: readonly xdr.SorobanAuthorizationEntry[]): boolean {
   return auth.every((a) => a.credentials.type === "sorobanCredentialsSourceAccount");
 }

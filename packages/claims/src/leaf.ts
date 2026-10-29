@@ -68,7 +68,7 @@ export const newParcelSalt = (): Uint8Array => random(32);
  * carrier's public tracking page. Pass the parcel number exactly as the carrier
  * reports it; no normalisation is applied.
  *
- * TODO(verify): the published format commits to one parcel number per order. How
+ * TODO(verify, D6 claims from live DPD tracking): the published format commits to one parcel number per order. How
  * multi-parcel orders are committed is not specified yet.
  */
 export function parcelsCommit(salt: Uint8Array, parcelNumber: string): Uint8Array {

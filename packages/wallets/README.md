@@ -78,9 +78,11 @@ Both are optional; the adapters are typed structurally and never import them.
 
 ## Open items
 
-- TODO(verify): Stellar Wallets Kit v2 documents installation from JSR (`@creit-tech/stellar-wallets-kit`); the lab installed the npm tarball `@creit.tech/stellar-wallets-kit@2.7.1`. Confirm the npm name stays current for v2.
-- TODO(verify): what each kit module's `signAuthEntry` takes and returns (base64 preimage in, base64 signature out is assumed).
-- TODO(verify): Privy user ID format in examples varies between `did:privy:...` and `privy:did:...`; this package passes it through unchanged.
-- TODO(verify): Privy create-wallet idempotency is sent as the `idempotency_key` body field listed in the API reference.
+Each `TODO(verify, D2)` closes in D2 (wallets run with real wallets).
+
+- TODO(verify, D2): Stellar Wallets Kit v2 documents installation from JSR (`@creit-tech/stellar-wallets-kit`); the lab installed the npm tarball `@creit.tech/stellar-wallets-kit@2.7.1`. Confirm the npm name stays current for v2.
+- TODO(verify, D2): what each kit module's `signAuthEntry` takes and returns (base64 preimage in, base64 signature out is assumed).
+- TODO(verify, D2): Privy user ID format in examples varies between `did:privy:...` and `privy:did:...`; this package passes it through unchanged.
+- TODO(verify, D2): Privy create-wallet idempotency is sent as the `idempotency_key` body field listed in the API reference.
 
 License: Apache-2.0.

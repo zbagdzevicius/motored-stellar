@@ -3,7 +3,7 @@
  * reads. Field names are taken from Bridge's published API reference and
  * guides (apidocs.bridge.xyz): KYC links, customers, external accounts,
  * virtual accounts, liquidation addresses, transfers and the sandbox guide.
- * Fields the saved docs did not show are marked TODO(verify) where read.
+ * Fields the saved docs did not show are marked TODO(verify, D5) where read (D5: Bridge sandbox run).
  */
 
 import type { TravelRuleWire } from "../travel-rule.js";
@@ -32,7 +32,7 @@ export interface WireKycLink {
 export interface WireCustomer {
   id: string;
   type?: "individual" | "business";
-  /** TODO(verify): customer objects in the guides show `status`; KYC links show `kyc_status`. Both are read. */
+  /** TODO(verify, D5): customer objects in the guides show `status`; KYC links show `kyc_status`. Both are read. */
   status?: string;
   kyc_status?: string;
 }
@@ -132,7 +132,7 @@ export interface WireTransfer {
   state: string;
   amount?: string;
   currency?: string;
-  /** TODO(verify): location of the destination tx hash on the transfer object (assumed under `receipt`). */
+  /** TODO(verify, D5): location of the destination tx hash on the transfer object (assumed under `receipt`). */
   receipt?: { destination_tx_hash?: string };
   created_at?: string;
   updated_at?: string;
