@@ -4,7 +4,7 @@
 #
 # The files are used ONLY by the guard contract tests (contracts/guard/src/test.rs), which run every
 # guard rule against the real deployed escrow code. They are git-ignored and never redistributed.
-# TODO(verify): Trustless Work's license for the compiled Wasm before ever committing these files.
+# TODO(verify, D13 open-source release): Trustless Work's license for the compiled Wasm before ever committing these files.
 #
 # Read-only: this makes RPC reads (getLedgerEntries) and never signs or submits a transaction.
 #

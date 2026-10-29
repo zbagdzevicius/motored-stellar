@@ -1,4 +1,4 @@
-//! # motored-escrow-guard (v0.8)
+//! # motored-escrow-guard (v0.9)
 //!
 //! A Soroban custom account (`__check_auth`) that holds both the `release_signer` and the
 //! `dispute_resolver` role of a Trustless Work v1 **single-release** escrow and narrows what
@@ -20,6 +20,13 @@
 //!
 //! The tests in `src/test.rs` run every rule against Trustless Work's deployed v1 Wasm files
 //! (testnet `7c3f7b2a...`, mainnet `96d51751...`), fetched by hash.
+//!
+//! **TTL upkeep (v0.9).** Every state-changing entry point extends the guard's instance (and code)
+//! TTL, and every entry point that loads an escrow registration (`register_escrow`, `contest`,
+//! `__check_auth`) extends that `Reg` entry's TTL, by [`TTL_THRESHOLD`] / [`TTL_EXTEND_TO`]. The
+//! read-only views (`check_escrow`, `registration`) do not: they are run by simulation, where an
+//! extension never reaches the ledger. The extension changes no rule: it runs on data the entry
+//! point already loaded and never alters a stored value.
 //!
 //! **Status: unaudited. Testnet only.** See `docs/threat-model.md` and `docs/trust-model.md`.
 #![no_std]
@@ -281,11 +288,36 @@ pub struct BuyerContested {
     pub evidence: BytesN<32>,
 }
 
+/// Ledgers per day at the ~5 s target ledger close time.
+pub const LEDGERS_PER_DAY: u32 = 17_280;
+/// TTL upkeep threshold: an entry whose remaining TTL is at or below 30 days is extended.
+pub const TTL_THRESHOLD: u32 = 30 * LEDGERS_PER_DAY;
+/// TTL upkeep target: such an entry is extended to 60 days from the current ledger. The longest
+/// unattended stretch the rules need is `delay` + `contest_window` (7 + 7 days with the deployed
+/// configuration), well inside both values, and `register_escrow` is permissionless, so anyone
+/// can top an escrow's registration up. The host clamps a persistent extension to the network's
+/// maximum entry TTL, and a network minimum above these values makes the call a no-op.
+pub const TTL_EXTEND_TO: u32 = 60 * LEDGERS_PER_DAY;
+
 #[contract]
 pub struct Guard;
 
 fn cfg(env: &Env) -> Cfg {
     env.storage().instance().get(&DK::Cfg).unwrap()
+}
+
+/// Extends the guard's instance and code TTL (no-op while above the threshold).
+fn bump_instance(env: &Env) {
+    env.storage()
+        .instance()
+        .extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
+}
+
+/// Extends the TTL of one escrow registration (no-op while above the threshold).
+fn bump_reg(env: &Env, k: &DK) {
+    env.storage()
+        .persistent()
+        .extend_ttl(k, TTL_THRESHOLD, TTL_EXTEND_TO);
 }
 
 /// Delivery-claim leaf:
@@ -360,6 +392,7 @@ fn window_start(r: &Reg) -> Option<u64> {
 impl Guard {
     pub fn __constructor(env: Env, cfg: Cfg) {
         env.storage().instance().set(&DK::Cfg, &cfg);
+        bump_instance(&env);
     }
 
     /// Read-only precheck, run by simulation BEFORE any funding transaction is handed out:
@@ -397,6 +430,7 @@ impl Guard {
     /// `disputed_at` (dispute flag). Late calls only delay the seller.
     pub fn register_escrow(env: Env, escrow: Address) -> Result<Reg, GErr> {
         let c = cfg(&env);
+        bump_instance(&env);
         let e = inspect(&env, &c, &escrow)?;
         if e.flags.released || e.flags.resolved {
             return Err(GErr::AlreadySettled);
@@ -432,6 +466,7 @@ impl Guard {
             }
         };
         if reg.closed {
+            bump_reg(&env, &k);
             return Ok(reg);
         }
         if reg.funded_at.is_none() && bal >= reg.amount {
@@ -447,6 +482,7 @@ impl Guard {
             reg.disputed_at = Some(now);
         }
         env.storage().persistent().set(&k, &reg);
+        bump_reg(&env, &k);
         Ok(reg)
     }
 
@@ -463,6 +499,8 @@ impl Guard {
             .get(&k)
             .ok_or(GErr::NotRegistered)?;
         reg.buyer.require_auth();
+        bump_instance(&env);
+        bump_reg(&env, &k);
         if reg.closed {
             return Err(GErr::Closed);
         }
@@ -488,6 +526,7 @@ impl Guard {
     ) {
         let c = cfg(&env);
         c.admin.require_auth();
+        bump_instance(&env);
         let eta = env.ledger().timestamp() + c.rotate_delay;
         env.storage().instance().set(
             &DK::Pending,
@@ -518,6 +557,7 @@ impl Guard {
         if env.ledger().timestamp() < p.eta {
             return Err(GErr::Timelocked);
         }
+        bump_instance(&env);
         c.release_pk = p.release.clone();
         c.resolver_pk = p.resolver.clone();
         c.breakglass_pk = p.breakglass.clone();
@@ -536,6 +576,7 @@ impl Guard {
     pub fn rotate_resolver(env: Env, resolver: BytesN<32>) {
         let mut c = cfg(&env);
         c.resolver_admin.require_auth();
+        bump_instance(&env);
         c.resolver_pk = resolver.clone();
         env.storage().instance().set(&DK::Cfg, &c);
         ResolverRotated { resolver }.publish(&env);
@@ -569,6 +610,10 @@ impl CustomAccountInterface for Guard {
             .persistent()
             .get(&k)
             .ok_or(GErr::NotRegistered)?;
+        // TTL upkeep only (v0.9). A refused authorization fails the transaction, so the
+        // extension lands only together with an authorized call.
+        bump_instance(&env);
+        bump_reg(&env, &k);
         let msg: Bytes = payload.to_bytes().into();
         let rel = Symbol::new(&env, "release_funds");
         let res = Symbol::new(&env, "resolve_dispute");

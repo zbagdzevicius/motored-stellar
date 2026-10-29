@@ -12,7 +12,7 @@ target `wasm32v1-none`).
 
 A tagged release of this workspace is part of D13.
 
-**Status: v0.8, unaudited, testnet only.**
+**Status: v0.9 (v0.8 rules plus in-contract TTL upkeep), unaudited, testnet only.**
 
 ## Build and test
 
@@ -34,8 +34,8 @@ The order matters. The guard tests:
 only reads the Wasm code entry; nothing in this repository deploys to mainnet. Set
 `TW_WASM_SRC_DIR` to copy the two files from a local cache instead (still hash-checked).
 
-Expected result: 66 ported guard tests in `guard/src/test.rs` (32 tests x 2 Trustless Work
-lineages, plus `m01` and `m02`), the leaf golden-vector tests in `guard/src/test_vectors.rs` (the
+Expected result: 73 guard tests in `guard/src/test.rs` (35 tests x 2 Trustless Work
+lineages, plus `m01`, `m02` and `m03`; v0.9 added the TTL upkeep tests `x08`-`x10` and `m03`), the leaf golden-vector tests in `guard/src/test_vectors.rs` (the
 same vectors are asserted by `packages/claims`), and 8 claim-registry tests. `cargo test -- --nocapture` prints the payout splits and the metered CPU
 and memory cost of a seller resolution with a depth-32 proof (`m02`).
 
@@ -53,6 +53,12 @@ the guard as both `release_signer` and `dispute_resolver`, so every payout needs
 | `Resolve` | resolver | `resolve_dispute`, `withdraw_remaining_funds` | Recipients only buyer and seller. Seller share only on the approved-and-uncontested path (buyer approved, dispute seen afterwards, no `contest` within `contest_window`). `withdraw_remaining_funds` pays the buyer only |
 | `ResolveSeller` | resolver | `resolve_dispute` | Seller share backed by a delivery claim anchored after full funding and at least `delay` old |
 | `BreakGlass` | break-glass (offline) | `resolve_dispute` | Whole distribution to the buyer (refund only) |
+
+TTL upkeep (v0.9): `register_escrow`, `contest` and `__check_auth` extend the touched registration
+and the guard's instance and code; the key-rotation calls and the constructor extend the instance and
+code. An entry with 30 days (`TTL_THRESHOLD`, 518,400 ledgers) or less left is extended to 60 days
+(`TTL_EXTEND_TO`, 1,036,800 ledgers). The views `check_escrow` and `registration` do not extend. No
+rule changes.
 
 In every seller payout the seller's share is capped at the escrow amount (v0.8); overfunding and
 dust can only go to the buyer.
@@ -112,6 +118,8 @@ a carrier-specific claim field name replaced by `carrier_event_ref` (same 32 byt
 platform-neutral comments, new claim-registry unit tests.
 
 ## TODO(verify)
+
+Each item closes in D13 (open-source release and regression suite).
 
 * Trustless Work's license for its deployed Wasm, before ever committing the fetched files.
 * `stellar contract fetch --wasm-hash` was checked against Stellar CLI 23.4.0; re-check with the CI
