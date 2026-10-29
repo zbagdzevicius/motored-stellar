@@ -1,0 +1,265 @@
+{
+  "network": "testnet",
+  "asset": "EURC:GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO",
+  "orderAmount": "2",
+  "guard": "CCRZHNU2CHN62BXALEFHAJEX57AURBB7OWYM37I7JSO7HLALHVJ2KVUZ",
+  "registry": "CC6K26NQGSD3UAIUS463ZJCEC7SGEF6V5R34OYZX3WHY6URFTKQ5FBDX",
+  "sac": "CCUUDM434BMZMYWYDITHFXHDMIVTGGD6T2I5UKNX5BSLXLW7HVR4MCGZ",
+  "runLog": [
+    {
+      "label": "order amount 2 EURC (20000000 units)",
+      "note": null
+    },
+    {
+      "label": "buyer holds 11.9999 EURC; v010 needs at least 2.2 EURC",
+      "note": null
+    },
+    {
+      "label": "F1 (platform_fee 501 bps, over the cap): atomic deploy+init via Trustless Work deployer",
+      "hash": "1d5996b27d9cad43eed437ba0787def3160580ecc966c4fa7a6abde5b1e52d03",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/1d5996b27d9cad43eed437ba0787def3160580ecc966c4fa7a6abde5b1e52d03"
+    },
+    {
+      "label": "F1 (platform_fee 501 bps, over the cap) escrow = CBLCRKZJW74SGSF33QGETRI7S67CHPTPEAD5DRGW2N4U2XUETX4FEPM7",
+      "note": null
+    },
+    {
+      "label": "guard.check_escrow(F1 (platform_fee 501 bps, over the cap)) before funding:",
+      "note": {
+        "error": "Error(Contract, #29) PlatformFeeOverCap (if raised by the guard)"
+      }
+    },
+    {
+      "label": "F1 register_escrow above the fee cap (guard PlatformFeeOverCap=29), landed: simulation refuses with Error(Contract, #29) PlatformFeeOverCap; landing it with a manual read-only footprint",
+      "note": {
+        "readOnly": 6,
+        "instructions": 20000000,
+        "resourceFee": "10032020"
+      }
+    },
+    {
+      "label": "F1 register_escrow above the fee cap (guard PlatformFeeOverCap=29), landed",
+      "hash": "54a5c520f8597780074919bbe09a4d8349ebafc8988f5bca733bd29c8dd65e4c",
+      "status": "FAILED",
+      "link": "https://stellar.expert/explorer/testnet/tx/54a5c520f8597780074919bbe09a4d8349ebafc8988f5bca733bd29c8dd65e4c",
+      "errors": [
+        "Error(Contract, #29) PlatformFeeOverCap"
+      ]
+    },
+    {
+      "label": "F1 registration after the refusal (null: never registered)",
+      "note": null
+    },
+    {
+      "label": "F2 (platform_fee 500 bps, at the cap): atomic deploy+init via Trustless Work deployer",
+      "hash": "c60496945470a85bc1890c407ab526a066ec70c9454ed20a817f38b1ed5bb86d",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/c60496945470a85bc1890c407ab526a066ec70c9454ed20a817f38b1ed5bb86d"
+    },
+    {
+      "label": "F2 (platform_fee 500 bps, at the cap) escrow = CBFQGF4U4JGHAHCHFMS24UZ43IBU4Z2SWHMCEFPCBP7MAFQVRRBJC5J2",
+      "note": null
+    },
+    {
+      "label": "guard.check_escrow(F2 (platform_fee 500 bps, at the cap)) before funding:",
+      "note": "Ok"
+    },
+    {
+      "label": "F2: buyer sends 1 unit of dust (register_escrow needs a balance above zero)",
+      "hash": "4990db059e8550d3e594f0107e179b2ec5a954f9d7afb62f32434d728cd853eb",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/4990db059e8550d3e594f0107e179b2ec5a954f9d7afb62f32434d728cd853eb"
+    },
+    {
+      "label": "F2 at the cap: register_escrow",
+      "hash": "1bd128eb6dea7367d386c31c4bbbddc7a029b2a3b77d8438af0538d853175579",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/1bd128eb6dea7367d386c31c4bbbddc7a029b2a3b77d8438af0538d853175579"
+    },
+    {
+      "label": "F2 registration",
+      "note": {
+        "amount": "20000000",
+        "approved_at": null,
+        "buyer": "GDXXMBLWASPHLHCTZNXITELCS3CMWIVTUWHZM336AWZSKXDNNQOMONMC",
+        "closed": false,
+        "contested_at": null,
+        "disputed_at": null,
+        "funded_at": null,
+        "registered_at": "1793300770",
+        "seller": "GDJMHIH3UWWD4CGZ47JJXXPIFOBXAKBEZSUT3LANWGP6K2AMR6S3PQBH"
+      }
+    },
+    {
+      "label": "W throwaway buyer (public key)",
+      "note": "GBQ542QMARB4MPZ3FFIKD6WNADRF5YQZJ44WQAO7OSII5ISDJM3NCXY4"
+    },
+    {
+      "label": "W: throwaway buyer adds the asset trustline",
+      "hash": "727cf3ab15b1cc83e8dfae5e97e4f1bd8aa7165fc29bf33fadd98a5299583b9c",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/727cf3ab15b1cc83e8dfae5e97e4f1bd8aa7165fc29bf33fadd98a5299583b9c"
+    },
+    {
+      "label": "W: buyer role sends the throwaway buyer 2 EURC",
+      "hash": "292a81927bd232b17f070be637f43dae3827c9496478a4cf864ac5b62f865405",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/292a81927bd232b17f070be637f43dae3827c9496478a4cf864ac5b62f865405"
+    },
+    {
+      "label": "W: atomic deploy+init via Trustless Work deployer",
+      "hash": "d3f0354443779b510fbf4df4c719e45694c714f3419326ad8930ae986f83e45a",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/d3f0354443779b510fbf4df4c719e45694c714f3419326ad8930ae986f83e45a"
+    },
+    {
+      "label": "W escrow = CCFF7GHTZ7QFR33MNNQHVCMKDWKU3BSQCTMTN4U5LY65UH5T2Q6FRHRM",
+      "note": null
+    },
+    {
+      "label": "guard.check_escrow(W) before funding:",
+      "note": "Ok"
+    },
+    {
+      "label": "W (throwaway buyer): buyer fund_escrow 20000000",
+      "hash": "eb7d3dd03556237e100bb306e71f47b727eb03147a043ffd2df451504be5d847",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/eb7d3dd03556237e100bb306e71f47b727eb03147a043ffd2df451504be5d847"
+    },
+    {
+      "label": "W (funded_at): register_escrow",
+      "hash": "2d0fa4438473cd5b2751b09fce5548230c1679fd9b24c01ac6d48b9b400964f9",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/2d0fa4438473cd5b2751b09fce5548230c1679fd9b24c01ac6d48b9b400964f9"
+    },
+    {
+      "label": "W: throwaway buyer removes its trustline (it can no longer receive the asset)",
+      "hash": "3338751a58da915fc7e9c503dd9a25ac7600a2f767a3a3bef090bf9663371637",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/3338751a58da915fc7e9c503dd9a25ac7600a2f767a3a3bef090bf9663371637"
+    },
+    {
+      "label": "W: 1 unit of dust sent to the escrow (any third party can)",
+      "hash": "fbc16d7460b4c085ed24d61a6a818ecadf39972799e8cf20306acd90defc14f9",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/fbc16d7460b4c085ed24d61a6a818ecadf39972799e8cf20306acd90defc14f9"
+    },
+    {
+      "label": "W: platform dispute_escrow",
+      "hash": "7451ee35917f91bcd8bea42bbbb2746c97443a59cf7fb289113704a9a369948d",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/7451ee35917f91bcd8bea42bbbb2746c97443a59cf7fb289113704a9a369948d"
+    },
+    {
+      "label": "W (records dispute): register_escrow",
+      "hash": "ea8b1ac06cffab9434664822d373923f93b05947dd177619d4c23f3b4a1fc7d2",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/ea8b1ac06cffab9434664822d373923f93b05947dd177619d4c23f3b4a1fc7d2"
+    },
+    {
+      "label": "W seller withdrawal without a claim (guard NoClaim=8)",
+      "refused": "Error(Contract, #8) NoClaim (if raised by the guard)"
+    },
+    {
+      "label": "W: anchor claim batch 1793300822455 (proof depth 3)",
+      "hash": "f3cba1f1042fd61dd5319b69c49b01e7466d5efd5c8fd542c9b7cfaf7ee05388",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/f3cba1f1042fd61dd5319b69c49b01e7466d5efd5c8fd542c9b7cfaf7ee05388"
+    },
+    {
+      "label": "W batch root",
+      "note": "345f4c0db053a575fa4e99ed804956f4b4dc6b2b8699a2153abc5b480e7eba6b"
+    },
+    {
+      "label": "waiting 135 s (testnet delay 120 s; production 7 days)",
+      "note": null
+    },
+    {
+      "label": "W resolve_dispute with the buyer leg the dust forces (the token refuses: no trustline) (record-sim)",
+      "refused": "Error(Contract, #13) NotWholeToBuyer (if raised by the guard)"
+    },
+    {
+      "label": "W resolve_dispute paying the seller the whole balance (guard SellerOverAmount=28)",
+      "refused": "Error(Contract, #28) SellerOverAmount (if raised by the guard)"
+    },
+    {
+      "label": "W withdraw_remaining_funds: seller paid alone against the claim: enforce-sim cost",
+      "note": {
+        "instructions": 4332912,
+        "minResourceFee": "27522"
+      }
+    },
+    {
+      "label": "W withdraw_remaining_funds: seller paid alone against the claim",
+      "hash": "2d696d8b8ba704ed3338c1cb061db6ea9519e2829ce2036abd06e3069a3ae972",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/2d696d8b8ba704ed3338c1cb061db6ea9519e2829ce2036abd06e3069a3ae972"
+    },
+    {
+      "label": "W seller received",
+      "note": "19000000"
+    },
+    {
+      "label": "W escrow balance left for the buyer",
+      "note": "1"
+    },
+    {
+      "label": "W registration",
+      "note": {
+        "amount": "20000000",
+        "approved_at": null,
+        "buyer": "GBQ542QMARB4MPZ3FFIKD6WNADRF5YQZJ44WQAO7OSII5ISDJM3NCXY4",
+        "closed": true,
+        "contested_at": null,
+        "disputed_at": "1793300820",
+        "funded_at": "1793300800",
+        "registered_at": "1793300800",
+        "seller": "GDJMHIH3UWWD4CGZ47JJXXPIFOBXAKBEZSUT3LANWGP6K2AMR6S3PQBH"
+      }
+    },
+    {
+      "label": "W second seller withdrawal (guard Closed=17)",
+      "refused": "Error(Contract, #17) Closed (if raised by the guard)"
+    },
+    {
+      "label": "W public re-check of the claim",
+      "note": {
+        "ok": true,
+        "leaf": "32ea34df7a0ccf29dbdabd918724662fb44e33ba57782542003cc073cf2c952f",
+        "computedRoot": "345f4c0db053a575fa4e99ed804956f4b4dc6b2b8699a2153abc5b480e7eba6b",
+        "registryVerify": true,
+        "reasons": [],
+        "anchoredAt": "1793300825",
+        "fundedAt": "1793300800",
+        "anchoredAfterFunding": true
+      }
+    },
+    {
+      "label": "landed refusals",
+      "note": [
+        {
+          "label": "F1 register_escrow above the fee cap (guard PlatformFeeOverCap=29), landed",
+          "expectedCode": 29,
+          "status": "FAILED",
+          "link": "https://stellar.expert/explorer/testnet/tx/54a5c520f8597780074919bbe09a4d8349ebafc8988f5bca733bd29c8dd65e4c",
+          "errors": [
+            "Error(Contract, #29) PlatformFeeOverCap"
+          ],
+          "confirmed": true
+        }
+      ]
+    },
+    {
+      "label": "summary",
+      "note": {
+        "feeCapRefusalLanded": true,
+        "atCapRegistered": true,
+        "sellerWithdrawalLanded": true,
+        "registrationClosed": true,
+        "secondWithdrawalRefused": true,
+        "claimRecheckOk": true
+      }
+    }
+  ]
+}

@@ -1,13 +1,13 @@
 # Testnet proofs
 
 Public Stellar **testnet** contract IDs and transaction hashes from the runs behind this code.
-Runs 1 to 3 were copied from lab run logs. Runs 4 to 8 were produced by this repository's own
-scripts (`npm run testnet:keys`, `testnet:deploy`, `testnet:e2e`, `testnet:e2e-claims`, `testnet:refusals`). Links go to [stellar.expert](https://stellar.expert/explorer/testnet).
+Runs 1 to 3 were copied from lab run logs. Runs 4 to 9 were produced by this repository's own
+scripts (`npm run testnet:keys`, `testnet:deploy`, `testnet:e2e`, `testnet:e2e-claims`, `testnet:refusals`, `testnet:v010`). Links go to [stellar.expert](https://stellar.expert/explorer/testnet).
 
 Testnet is reset from time to time, and a reset erases these entries. The run notes, fees and
 instruction counts stay in [verification.md](verification.md). To make a fresh proof, run
-`npm run testnet:keys && npm run testnet:deploy && npm run testnet:e2e && npm run testnet:e2e-claims && npm run testnet:refusals`
-and append the output below with the date. Runs 4 to 8 are re-run and re-logged here after any reset, so their links stay live for reviewers.
+`npm run testnet:keys && npm run testnet:deploy && npm run testnet:e2e && npm run testnet:e2e-claims && npm run testnet:refusals && npm run testnet:v010`
+and append the output below with the date. Runs 4 to 9 are re-run and re-logged here after any reset, so their links stay live for reviewers.
 
 Pinned Trustless Work escrow Wasm (used by every run and by the unit tests):
 testnet `7c3f7b2af92ad86092708b23babf80f9e1308d7f3ce18b703b9499192ecc934b`,
@@ -20,10 +20,14 @@ deployed build, made with the workspace version at 0.8.0. The repository's guard
 but at workspace version 0.9.0 it builds and optimises to
 `c3fe20557bcde3bea44b1cb74aa01efab00a46f52b3bd0ddb6f4c4c0f872fb22` (22,541 bytes; the version
 string changes the built bytes, not the logic; see [verification.md](verification.md)), which is
-what a fresh `npm run testnet:deploy` from this repository uploads once the optimised file is built.
+what a fresh `npm run testnet:deploy` of the v0.9 source uploads once the optimised file is built.
+Guard v0.10 (with the platform fee cap) optimised Wasm sha256 as deployed in run 9:
+`2a21ef35e57f8505861296e2b93a09c5aa2117c66a5fb5d3d2cbcefe3087fbb5` (22,664 bytes, workspace version
+0.10.0); claim registry v0.10 `e829dc52672dbc8aebca65c6595416ca2b8fba5b787a575e4a487dda3d808870`.
 
 In runs 1 to 7 a lab-issued asset (run 4: `XEUR`, issued by the run's own issuer account) stood in for EURC;
-run 8 used Circle's testnet EURC (see [Run 8](#run-8-real-circle-testnet-eurc-guard-v09-29-oct-2026-1156-to-1205-utc)).
+runs 8 and 9 used Circle's testnet EURC (see [Run 8](#run-8-real-circle-testnet-eurc-guard-v09-29-oct-2026-1156-to-1205-utc)
+and [Run 9](#run-9-guard-v010-on-circle-testnet-eurc-29-oct-2026-1903-to-1910-utc)).
 In all runs the seller-payout delay and contest window were shortened to 120 s so a run fits in minutes. Production values are
 7 days. The guard code was the lab crate `lab-guard`, which this repository ships as
 `motored-escrow-guard` with the same logic.
@@ -578,6 +582,137 @@ Run logs: [`docs/runs/e2e-2026-10-29T11-58-05-865Z.json`](runs/e2e-2026-10-29T11
 [`docs/runs/e2e-claims-2026-10-29T12-02-05-442Z.json`](runs/e2e-claims-2026-10-29T12-02-05-442Z.json),
 [`docs/runs/refusals-2026-10-29T12-05-06-590Z.json`](runs/refusals-2026-10-29T12-05-06-590Z.json)
 (public hashes only).
+
+## Run 9: guard v0.10 on Circle testnet EURC, 29 Oct 2026, 19:03 to 19:10 UTC
+
+Runs 4 to 8 ran guard v0.8 or v0.9; v0.10 had only been unit-tested. Run 9 deploys **guard v0.10**
+(the v0.9 rules plus the seller payout no buyer leg can block, the platform fee cap and
+mainnet-sized TTL upkeep) and a fresh claim registry v0.10 with
+`npm run testnet:deploy -- --asset EURC:GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO --amount 2`
+(29 Oct 2026, 19:03 UTC per `testnet-state.json`; `Cfg.max_platform_fee_bps` = 500, the deploy
+default), then runs `npm run testnet:e2e` (A, B, C) and the new `npm run testnet:v010` (F, W). Same
+runtime keys and the same Circle testnet EURC as run 8; the buyer held 13.9999 EURC on Horizon
+testnet before the run (11.9999 when `testnet:v010` started), so 2 EURC orders were used. Platform
+fee 470 bps plus Trustless Work's 0.3%, so a 2 EURC order pays the seller 1.9 EURC. Payout delay and
+contest window 120 s (production 7 days). The delivered events came from the scripts' mock oracle.
+Optimised Wasm sha256 as built and uploaded: guard v0.10
+`2a21ef35e57f8505861296e2b93a09c5aa2117c66a5fb5d3d2cbcefe3087fbb5` (22,664 bytes), claim registry v0.10
+`e829dc52672dbc8aebca65c6595416ca2b8fba5b787a575e4a487dda3d808870` (4,161 bytes).
+
+What run 9 adds to runs 4 to 8, all on v0.10:
+
+1. **A buyer-approved release** (`testnet:e2e` A): fund, register, buyer approval, release through
+   the guard's Release key; the seller received 1.9 EURC.
+2. **The seller-only `withdraw_remaining_funds` dispute payout** (`testnet:v010` W), in the
+   dust/no-trustline scenario v0.10 was written for: a throwaway buyer account funds the escrow and
+   then removes its EURC trustline, and 1 unit of dust is sent to the escrow, so every
+   `resolve_dispute` would need a buyer leg (enforce-mode simulation: the token refuses with its own
+   `Error(Contract, #13)`, the SAC's missing-trustline error, in record mode). After the claim's
+   120 s delay the resolver pays the seller alone through `withdraw_remaining_funds`; the dust stays
+   for the buyer and the registration closes, so a second seller withdrawal is refused
+   (`Closed` = 17, simulation).
+3. **The platform fee cap as a failed transaction** (`testnet:v010` F1): an escrow created at 501 bps
+   fails `check_escrow` by simulation and its `register_escrow`, landed on purpose, FAILED on the
+   ledger with `Error(Contract, #29)` `PlatformFeeOverCap` (confirmed from the ledger's diagnostic
+   events by the script). An escrow at exactly 500 bps (F2) passes and registers.
+
+| Contract | ID |
+|---|---|
+| Guard v0.10 (platform fee cap 500 bps) | [`CCRZHNU2...J2KVUZ`](https://stellar.expert/explorer/testnet/contract/CCRZHNU2CHN62BXALEFHAJEX57AURBB7OWYM37I7JSO7HLALHVJ2KVUZ) |
+| Claim registry v0.10 | [`CC6K26NQ...Q5FBDX`](https://stellar.expert/explorer/testnet/contract/CC6K26NQGSD3UAIUS463ZJCEC7SGEF6V5R34OYZX3WHY6URFTKQ5FBDX) |
+| Circle testnet EURC SAC (as run 8) | [`CCUUDM43...R4MCGZ`](https://stellar.expert/explorer/testnet/contract/CCUUDM434BMZMYWYDITHFXHDMIVTGGD6T2I5UKNX5BSLXLW7HVR4MCGZ) |
+| Escrow factory (Trustless Work testnet Wasm instance) | [`CCOAVZCG...SI3ZSC`](https://stellar.expert/explorer/testnet/contract/CCOAVZCGPYMDUZXRDBDG5Z3EAVS4HQAYSMXAQZA7YK3Q7Q5TYJSI3ZSC) |
+| `testnet:e2e` escrow A (buyer-approved release) | [`CAN3PEKN...364CMD`](https://stellar.expert/explorer/testnet/contract/CAN3PEKNDM3HIXGAYZSRGWJ66ENF2IBDS67UZITMP3SQXA5PB4364CMD) |
+| `testnet:e2e` escrow B (dispute refund) | [`CAKCR5RP...2SYQMJ`](https://stellar.expert/explorer/testnet/contract/CAKCR5RPGPYMDI2ER4VZPWUXBXMQEMZ6YX3MLUSZDX4H2UNBUM2SYQMJ) |
+| `testnet:e2e` escrow C (partial funding, break-glass) | [`CCQDLJRW...SXQD6Q`](https://stellar.expert/explorer/testnet/contract/CCQDLJRWFAFVCSYA6GXB5ATQWCW2J5FYC6TIZWV4M6HVEF2VBTSXQD6Q) |
+| `testnet:v010` escrow F1 (platform fee 501 bps, over the cap; never registered) | [`CBLCRKZJ...4FEPM7`](https://stellar.expert/explorer/testnet/contract/CBLCRKZJW74SGSF33QGETRI7S67CHPTPEAD5DRGW2N4U2XUETX4FEPM7) |
+| `testnet:v010` escrow F2 (platform fee 500 bps, at the cap; registered at 1 unit of dust) | [`CBFQGF4U...BJC5J2`](https://stellar.expert/explorer/testnet/contract/CBFQGF4U4JGHAHCHFMS24UZ43IBU4Z2SWHMCEFPCBP7MAFQVRRBJC5J2) |
+| `testnet:v010` escrow W (seller paid alone past a buyer with no trustline) | [`CCFF7GHT...6FRHRM`](https://stellar.expert/explorer/testnet/contract/CCFF7GHTZ7QFR33MNNQHVCMKDWKU3BSQCTMTN4U5LY65UH5T2Q6FRHRM) |
+
+Deployment (`npm run testnet:deploy`):
+
+| Step | Transaction |
+|---|---|
+| Trustlines (already present, re-asserted): buyer, seller, platform, twFee, third | [`3be6a7a902e5...`](https://stellar.expert/explorer/testnet/tx/3be6a7a902e526b1838c108882e742dd2f4d9b90cf9a2089cdd6f44b6b87c1c2), [`7ed415581dcd...`](https://stellar.expert/explorer/testnet/tx/7ed415581dcd436e715fb0691dc572571b2d20a8b0c4582784c28474a75cbcad), [`0a66e4d6774e...`](https://stellar.expert/explorer/testnet/tx/0a66e4d6774ec31c5934dc2cf93291b9b7009a3fbe881bda11c08c102f694204), [`dbff2d8edade...`](https://stellar.expert/explorer/testnet/tx/dbff2d8edade24a98354f92711b36ddc89957f18adc9314c5cfc0593c76f7c28), [`57b77d6d30a1...`](https://stellar.expert/explorer/testnet/tx/57b77d6d30a155dc5537460aa4cbd7ff22971f88ae235e41c455fc52e9eb60d0) |
+| Claim registry v0.10 Wasm upload (fee-bump) | [`5c1e26a0c21c...`](https://stellar.expert/explorer/testnet/tx/5c1e26a0c21c0d872194ec839bf6cb5aff73b4e68ba2283776f51d5e41cb168d) |
+| Claim registry deploy | [`0cae9fa697c5...`](https://stellar.expert/explorer/testnet/tx/0cae9fa697c560b2a56b093a25b000ed613ac9388f24b03cdfd18dc32b710e76) |
+| Guard v0.10 Wasm upload (fee-bump) | [`004683bdbdc6...`](https://stellar.expert/explorer/testnet/tx/004683bdbdc6a1e1298c2eb98c2554498948fc6c0e9418f6afd04fa6f804c89f) |
+| Guard deploy, `Cfg.max_platform_fee_bps` = 500 | [`8592b762278f...`](https://stellar.expert/explorer/testnet/tx/8592b762278f0ccb20f8362660be22c53e9cab8406cfa3c6a3ee4a2e453b69db) |
+| Escrow factory deploy (Trustless Work testnet Wasm instance) | [`d92242881f99...`](https://stellar.expert/explorer/testnet/tx/d92242881f99e1bf37b16a57818eedbfc7b0432eff588034add2d6c39451efc3) |
+
+Failed transaction (refusal landed on the ledger in EURC; code confirmed from the ledger's diagnostic events by the script):
+
+| Refused call | Guard error | Failed transaction |
+|---|---|---|
+| F1: `register_escrow` of an escrow whose `platform_fee` (501 bps) is above `max_platform_fee_bps` (500) | `Error(Contract, #29)` `PlatformFeeOverCap` | [`54a5c520f859...`](https://stellar.expert/explorer/testnet/tx/54a5c520f8597780074919bbe09a4d8349ebafc8988f5bca733bd29c8dd65e4c) |
+
+`npm run testnet:e2e` (A, B, C):
+
+| Step | Transaction |
+|---|---|
+| A: escrow deploy+init through the Trustless Work deployer | [`8f727e83f54a...`](https://stellar.expert/explorer/testnet/tx/8f727e83f54a596bb81652868313043dc61199f15cc3643c0c3d9ef664e44435) |
+| A: buyer funds 2 EURC | [`079f5b4bab2d...`](https://stellar.expert/explorer/testnet/tx/079f5b4bab2d2bf04e8022c540be9ef9ec02202a248606912ef5e536a5496964) |
+| A: escrow registered with the guard | [`57d9793848ee...`](https://stellar.expert/explorer/testnet/tx/57d9793848ee31d7e7470f9cc02d745b4e1b1a7c6b747283033f4ad4ef25ea20) |
+| A: buyer approves the milestone | [`cc7e01754d55...`](https://stellar.expert/explorer/testnet/tx/cc7e01754d55436ef459f0af5a8ebc26cadcdce31ba1bd5ab2d371436d19303e) |
+| A: guard records the approval | [`a6c71f702a73...`](https://stellar.expert/explorer/testnet/tx/a6c71f702a73a4c100e6a2948d5c40ebcb2f9b30d0ff6b95c1d2c367a344c907) |
+| A: delivery-claim batch anchored in the registry (proof depth 3) | [`503cfed12fba...`](https://stellar.expert/explorer/testnet/tx/503cfed12fba7df67b7f54ed1b2bd1f568ab2fb4b452646394608a0643420914) |
+| **A: buyer-approved release through the guard v0.10** (3,109,456 instructions in simulation); seller received 1.9 EURC, claim re-check ok | [`f2cdbd2c87eb...`](https://stellar.expert/explorer/testnet/tx/f2cdbd2c87eb0d525efce66bd73d8e179afbfb50e5ac735a9c33b88a9e355618) |
+| B: escrow deploy+init through the Trustless Work deployer | [`481673ac9457...`](https://stellar.expert/explorer/testnet/tx/481673ac9457edbbd7891babdd0efb3d3939a6becb41ae061985ec1fc74e8d2a) |
+| B: buyer funds 2 EURC | [`6f5dc9b4707a...`](https://stellar.expert/explorer/testnet/tx/6f5dc9b4707a8862b4d492ccb9497b2129a91cf8da248bb4c01f279bb1f18f76) |
+| B: escrow registered with the guard | [`40b252bd00f4...`](https://stellar.expert/explorer/testnet/tx/40b252bd00f47999705a92c74eb70e9992f765705d6488ae7a2b4a1f3fe4d3ad) |
+| B: buyer opens a dispute | [`fd4e573eba2b...`](https://stellar.expert/explorer/testnet/tx/fd4e573eba2b071f2bde6a110eb4a645f02b3eb6e68f48dc7712878ac5724126) |
+| B: guard records the dispute | [`79455a6f72a4...`](https://stellar.expert/explorer/testnet/tx/79455a6f72a434308ad525273f10e1df27b73fc1db49f8f132cfc5082a560656) |
+| B: dispute resolved, whole balance to the buyer | [`4f800790d4cc...`](https://stellar.expert/explorer/testnet/tx/4f800790d4ccdf91e7d56e4d304b5a9cf663e7df3e7e309348d24d03de155771) |
+| B: platform tops up the two escrow fees (0.1 EURC), buyer nets 100% | [`0685ca6f402d...`](https://stellar.expert/explorer/testnet/tx/0685ca6f402d5d03e3736f238b054b8d9c76d60b553555ac672bed3fee82887c) |
+| C: escrow deploy+init through the Trustless Work deployer | [`535cfc206464...`](https://stellar.expert/explorer/testnet/tx/535cfc206464010c0c021228ef8cafc6cf009bcdf76f6b37d2ee0388d46155fa) |
+| C: buyer funds 0.8 EURC (40%) | [`5ce244d537b1...`](https://stellar.expert/explorer/testnet/tx/5ce244d537b11441eaa60bfbda10e3bbf8919d7d178c3b444c343dd14a952b29) |
+| C: escrow registered at 40% funding | [`0884c1e9c15a...`](https://stellar.expert/explorer/testnet/tx/0884c1e9c15a0b354af43c3f3633935a5cbaa441d70c8211abaf775826eed67e) |
+| C: platform opens a dispute | [`f25a1c5d775a...`](https://stellar.expert/explorer/testnet/tx/f25a1c5d775a510479e673e7901dc7fca21af9be84b49c3566d787e8009a4a56) |
+| C: break-glass refund, whole balance (0.8 EURC) to the buyer | [`19da3f4077e3...`](https://stellar.expert/explorer/testnet/tx/19da3f4077e39f0a83b0a90e3986ff156fb8113dd3c84ce2f3110851e7c91ae4) |
+| C: platform tops up the two escrow fees (0.04 EURC), buyer nets 100% | [`5acbd45ebe3c...`](https://stellar.expert/explorer/testnet/tx/5acbd45ebe3c51ca98df4ae6280a0ce09cd6a436aefd16eb0290f772f41c8548) |
+
+`npm run testnet:v010` (F, W):
+
+| Step | Transaction |
+|---|---|
+| F1: escrow deploy+init with `platform_fee` 501 bps (one over the cap); `check_escrow` by simulation refuses it with `Error(Contract, #29)` | [`1d5996b27d9c...`](https://stellar.expert/explorer/testnet/tx/1d5996b27d9cad43eed437ba0787def3160580ecc966c4fa7a6abde5b1e52d03) |
+| **F1: FAILED on chain.** `register_escrow` of the over-cap escrow: `Error(Contract, #29)` `PlatformFeeOverCap`; `registration(F1)` stays empty, so no guard branch can pay out of it | [`54a5c520f859...`](https://stellar.expert/explorer/testnet/tx/54a5c520f8597780074919bbe09a4d8349ebafc8988f5bca733bd29c8dd65e4c) |
+| F2: escrow deploy+init with `platform_fee` 500 bps (exactly the cap); `check_escrow` passes | [`c60496945470...`](https://stellar.expert/explorer/testnet/tx/c60496945470a85bc1890c407ab526a066ec70c9454ed20a817f38b1ed5bb86d) |
+| F2: buyer sends 1 unit (0.0000001 EURC) so the escrow can register | [`4990db059e85...`](https://stellar.expert/explorer/testnet/tx/4990db059e8550d3e594f0107e179b2ec5a954f9d7afb62f32434d728cd853eb) |
+| F2: `register_escrow` at the cap succeeds | [`1bd128eb6dea...`](https://stellar.expert/explorer/testnet/tx/1bd128eb6dea7367d386c31c4bbbddc7a029b2a3b77d8438af0538d853175579) |
+| W: throwaway buyer account (`GBQ542QM...3NCXY4`, friendbot-funded) adds the EURC trustline | [`727cf3ab15b1...`](https://stellar.expert/explorer/testnet/tx/727cf3ab15b1cc83e8dfae5e97e4f1bd8aa7165fc29bf33fadd98a5299583b9c) |
+| W: buyer role sends the throwaway buyer 2 EURC | [`292a81927bd2...`](https://stellar.expert/explorer/testnet/tx/292a81927bd232b17f070be637f43dae3827c9496478a4cf864ac5b62f865405) |
+| W: escrow deploy+init (approver = the throwaway buyer) | [`d3f035444377...`](https://stellar.expert/explorer/testnet/tx/d3f0354443779b510fbf4df4c719e45694c714f3419326ad8930ae986f83e45a) |
+| W: throwaway buyer funds 2 EURC | [`eb7d3dd03556...`](https://stellar.expert/explorer/testnet/tx/eb7d3dd03556237e100bb306e71f47b727eb03147a043ffd2df451504be5d847) |
+| W: escrow registered with the guard (records full funding) | [`2d0fa4438473...`](https://stellar.expert/explorer/testnet/tx/2d0fa4438473cd5b2751b09fce5548230c1679fd9b24c01ac6d48b9b400964f9) |
+| W: throwaway buyer removes its EURC trustline (it can no longer receive EURC) | [`3338751a58da...`](https://stellar.expert/explorer/testnet/tx/3338751a58da915fc7e9c503dd9a25ac7600a2f767a3a3bef090bf9663371637) |
+| W: 1 unit of dust sent to the escrow (SAC `transfer`) | [`fbc16d7460b4...`](https://stellar.expert/explorer/testnet/tx/fbc16d7460b4c085ed24d61a6a818ecadf39972799e8cf20306acd90defc14f9) |
+| W: platform opens a dispute | [`7451ee35917f...`](https://stellar.expert/explorer/testnet/tx/7451ee35917f91bcd8bea42bbbb2746c97443a59cf7fb289113704a9a369948d) |
+| W: guard records the dispute | [`ea8b1ac06cff...`](https://stellar.expert/explorer/testnet/tx/ea8b1ac06cffab9434664822d373923f93b05947dd177619d4c23f3b4a1fc7d2) |
+| W: delivery-claim batch anchored in the registry (proof depth 3) | [`f3cba1f1042f...`](https://stellar.expert/explorer/testnet/tx/f3cba1f1042fd61dd5319b69c49b01e7466d5efd5c8fd542c9b7cfaf7ee05388) |
+| **W: after the 120 s delay, `withdraw_remaining_funds` pays the seller alone** (ResolveSeller branch, claim verified in `__check_auth`, 4,332,912 instructions in simulation); seller received 1.9 EURC, 1 unit stays in the escrow for the buyer, the registration is closed | [`2d696d8b8ba7...`](https://stellar.expert/explorer/testnet/tx/2d696d8b8ba704ed3338c1cb061db6ea9519e2829ce2036abd06e3069a3ae972) |
+
+Refused paths checked by enforce-mode simulation (not submitted), all with the expected codes: A
+release before buyer approval (refused in record mode), A release with a wrong fee address
+(`BadFeeAddr` = 15), A release signed with the resolver key (`Error(Auth, InvalidAction)`), B seller
+payout without a claim (`NoClaim` = 8), C break-glass to the seller (`NotWholeToBuyer` = 13), F1
+precheck (`PlatformFeeOverCap` = 29), W seller withdrawal without a claim (`NoClaim` = 8), W
+`resolve_dispute` with the buyer leg the dust forces (the SAC's `Error(Contract, #13)`, trustline
+missing), W `resolve_dispute` paying the seller the whole balance (`SellerOverAmount` = 28) and W's
+second seller withdrawal (`Closed` = 17). B and C buyers netted 100% after the platform top-up. The
+`testnet:v010` summary reads `feeCapRefusalLanded`, `atCapRegistered`, `sellerWithdrawalLanded`,
+`registrationClosed`, `secondWithdrawalRefused` and `claimRecheckOk` all true; A's and W's claims
+re-check `ok: true` with `registryVerify: true` and `anchoredAfterFunding: true`.
+
+The throwaway buyer's key was generated in memory by the script and never stored; its account
+(`GBQ542QMARB4MPZ3FFIKD6WNADRF5YQZJ44WQAO7OSII5ISDJM3NCXY4`) holds no EURC trustline after the run,
+and the 1 unit left in escrow W is withdrawable to it only once it restores one. Escrow F2 keeps its 1
+unit too. Summary: [`docs/runs/run-9.md`](runs/run-9.md). Run logs:
+[`docs/runs/e2e-2026-10-29T19-05-40-912Z.json`](runs/e2e-2026-10-29T19-05-40-912Z.json),
+[`docs/runs/v010-2026-10-29T19-09-34-500Z.json`](runs/v010-2026-10-29T19-09-34-500Z.json)
+(public hashes only). The deployment transactions above come from the deploy console output, which
+writes no run log.
+
 
 ## Sponsored accounts and fee-bumps (wallet lab, 24 Oct 2026)
 

@@ -75,12 +75,14 @@ export function parseAmount(v: string): bigint {
  *   e2e:         A released, then B (1x) and C (0.4x) refunded -> holds 2x, spends 1x (+1x with --silent-buyer)
  *   e2e-claims:  D and E funded together, D paid to the seller, E refunded -> holds 2x, spends 1x
  *   refusals:    A released, B, C, E refunded one at a time -> holds 2x, spends 1x
+ *   v010:        W's throwaway buyer gets 1x (paid to the seller), plus 2 units of dust -> holds 1x, spends 1x
  */
 export const BUYER_BUDGET = {
   e2e: { hold: 2n, spend: 1n },
   'e2e --silent-buyer': { hold: 3n, spend: 2n },
   'e2e-claims': { hold: 2n, spend: 1n },
   refusals: { hold: 2n, spend: 1n },
+  v010: { hold: 1n, spend: 1n },
 } as const;
 export type ScriptName = keyof typeof BUYER_BUDGET;
 
@@ -92,6 +94,15 @@ export function buyerNeed(script: ScriptName, amt: bigint): bigint {
 export const sleep = (seconds: number): Promise<void> => new Promise((ok) => setTimeout(ok, seconds * 1000));
 
 export type OrderKit = Awaited<ReturnType<typeof openOrderKit>>;
+
+export interface NewEscrowOptions {
+  /** The escrow's buyer (Trustless Work `approver`); default the `buyer` role. */
+  buyer?: string;
+  /** `platform_fee` in bps; default testnet-state.json's platformFeeBps. */
+  platformFeeBps?: number;
+  /** false: log the guard's precheck result instead of throwing when it refuses. Default true. */
+  precheckMustPass?: boolean;
+}
 
 export interface OrderKitOptions {
   /** Per-order amount as a decimal string (`--amount`); default: testnet-state.json's orderAmount, else 100. */
@@ -141,14 +152,14 @@ export async function openOrderKit(store: KeyStore, out: Out, opts: OrderKitOpti
     await chain.classic('third: buyer sends 0.0001 dust (as the stand-in deploy does)', BUYER, [Operation.payment({ destination: keys.accounts.third.publicKey, asset, amount: '0.0001' })]);
   }
 
-  async function newEscrow(label: string, amount: bigint): Promise<string> {
+  async function newEscrow(label: string, amount: bigint, o: NewEscrowOptions = {}): Promise<string> {
     const r = await chain.invoke(`${label}: atomic deploy+init via Trustless Work deployer`, SUB, st.twDeployer, 'tw_new_single_release_escrow', [
       addr(SUB.publicKey()),
       bytes(Buffer.from(st.twWasmHash, 'hex')),
       bytes(randomBytes(32)),
       sym('initialize_escrow'),
-      vec([escrowValue({ amount, platformFeeBps: st.guardConfig.platformFeeBps, token: st.sac,
-        roles: { approver: B, serviceProvider: S, receiver: S, platform: PLATFORM.publicKey(), releaseSigner: st.guard, disputeResolver: st.guard } })]),
+      vec([escrowValue({ amount, platformFeeBps: o.platformFeeBps ?? st.guardConfig.platformFeeBps, token: st.sac,
+        roles: { approver: o.buyer ?? B, serviceProvider: S, receiver: S, platform: PLATFORM.publicKey(), releaseSigner: st.guard, disputeResolver: st.guard } })]),
       vec([]),
     ]);
     if (!isTx(r) || r.status !== 'SUCCESS' || !r.returnValue) throw new Error(`${label}: escrow deploy failed`);
@@ -156,7 +167,7 @@ export async function openOrderKit(store: KeyStore, out: Out, opts: OrderKitOpti
     chain.note(`${label} escrow = ${E}`);
     const pc = await chain.read(st.guard, 'check_escrow', [addr(E)], src);
     chain.note(`guard.check_escrow(${label}) before funding:`, 'error' in pc ? pc : 'Ok');
-    if ('error' in pc) throw new Error(`${label}: guard precheck refused the escrow`);
+    if ('error' in pc && o.precheckMustPass !== false) throw new Error(`${label}: guard precheck refused the escrow`);
     return E;
   }
 
@@ -167,10 +178,10 @@ export async function openOrderKit(store: KeyStore, out: Out, opts: OrderKitOpti
     return r;
   }
 
-  async function fund(label: string, E: string, amount: bigint): Promise<void> {
+  async function fund(label: string, E: string, amount: bigint, funder: Keypair = BUYER): Promise<void> {
     const exp = await chain.read(E, 'get_escrow', [], src);
     if ('error' in exp) throw new Error(`${label}: get_escrow ${exp.error}`);
-    await chain.invoke(`${label}: buyer fund_escrow ${amount}`, BUYER, E, 'fund_escrow', [addr(B), exp.val, i128(amount)]);
+    await chain.invoke(`${label}: buyer fund_escrow ${amount}`, funder, E, 'fund_escrow', [addr(funder.publicKey()), exp.val, i128(amount)]);
   }
   const register = (label: string, E: string) => chain.invoke(`${label}: register_escrow`, SUB, st.guard, 'register_escrow', [addr(E)]);
   const guarded = (label: string, E: string, fn: string, args: xdr.ScVal[], key: Keypair, branch: GuardBranch, submit: boolean) =>
@@ -233,7 +244,7 @@ export async function openOrderKit(store: KeyStore, out: Out, opts: OrderKitOpti
   }
 
   return {
-    chain, st, src, amt, keys: K, SUB, BUYER, SELLER, PLATFORM, B, S, fee, wrongFee, g,
+    chain, st, src, amt, keys: K, SUB, BUYER, SELLER, PLATFORM, B, S, fee, wrongFee, g, asset, unit,
     bal, newEscrow, must, fund, register, guarded, registration, anchorClaim, topUp, exportLog,
   };
 }

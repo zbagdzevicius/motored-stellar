@@ -5,7 +5,7 @@
 //   - the reconciler passes with zero unexplained cents;
 //   - the delivery claim verifies against the registry.
 import { describe, expect, it } from 'vitest';
-import { GuardError, GuardErrorCode } from '../src/guard-model.js';
+import { GuardError, GuardErrorCode, GuardModel } from '../src/guard-model.js';
 import { buyerApproves, placeAndFund, runScenario1, runScenario2 } from '../src/scenarios.js';
 import { buildWorld } from '../src/world.js';
 
@@ -86,6 +86,16 @@ describe('guard rules visible through the example', () => {
     await expect(
       w2.guard.authorize(o.contractId, { fn: 'release_funds' }, { branch: 'Release', signer: w2.keys.release }),
     ).rejects.toEqual(new GuardError(GuardErrorCode.Closed));
+  });
+
+  it('refuses an escrow whose platform fee is above the configured cap (#29), and accepts one at the cap', async () => {
+    const w = buildWorld();
+    const p = await placeAndFund(w, quiet);
+    const snap = { ...(await w.api.getEscrow(p.contractId)), balance: 0n };
+    const capped = (max: number) =>
+      new GuardModel({ address: snap.roles.releaseSigner, platform: snap.roles.platform, releaseKey: new Uint8Array(32), resolverKey: new Uint8Array(32), breakGlassKey: new Uint8Array(32), delay: 1, contestWindow: 1, maxPlatformFeeBps: max }, w.registry, () => 0);
+    expect(() => capped(snap.platformFeeBps - 1).checkEscrow(snap)).toThrow(new GuardError(GuardErrorCode.PlatformFeeOverCap));
+    expect(() => capped(snap.platformFeeBps).checkEscrow(snap)).not.toThrow();
   });
 
   it('refuses a precheck once anyone has sent funds to the escrow (#24)', async () => {

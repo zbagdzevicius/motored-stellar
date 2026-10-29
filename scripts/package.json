@@ -16,6 +16,7 @@
     "testnet:e2e": "tsx testnet/e2e.ts",
     "testnet:e2e-claims": "tsx testnet/e2e-claims.ts",
     "testnet:refusals": "tsx testnet/refusals.ts",
+    "testnet:v010": "tsx testnet/v010.ts",
     "metric": "tsx metric/index.ts",
     "claims:recheck": "tsx claims/recheck.ts"
   },

@@ -31,6 +31,7 @@ export const GUARD_ERRORS = Object.freeze({
   26: 'ContestTooLate',
   27: 'NoDisputeSeen',
   28: 'SellerOverAmount',
+  29: 'PlatformFeeOverCap',
 } as const);
 
 export type GuardErrorCode = keyof typeof GUARD_ERRORS;

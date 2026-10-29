@@ -12,7 +12,7 @@ target `wasm32v1-none`).
 
 A tagged release of this workspace is part of D13.
 
-**Status: v0.10 (v0.9 plus a seller payout no buyer leg can block, and mainnet-sized TTL upkeep in the guard and the registry), unaudited, testnet only.**
+**Status: v0.10 (v0.9 plus a seller payout no buyer leg can block, a cap on the escrow's platform fee rate, and mainnet-sized TTL upkeep in the guard and the registry), unaudited, testnet only. Deployed on testnet in run 9 (29 Oct 2026, Circle testnet EURC; [proofs](../docs/testnet-proofs.md#run-9-guard-v010-on-circle-testnet-eurc-29-oct-2026-1903-to-1910-utc)).**
 
 ## Build and test
 
@@ -34,9 +34,11 @@ The order matters. The guard tests:
 only reads the Wasm code entry; nothing in this repository deploys to mainnet. Set
 `TW_WASM_SRC_DIR` to copy the two files from a local cache instead (still hash-checked).
 
-Expected result: 95 tests. 82 guard tests in `guard/src/test.rs` (39 tests x 2 Trustless Work
+Expected result: 99 tests. 86 guard tests in `guard/src/test.rs` (41 tests x 2 Trustless Work
 lineages, plus `m01`-`m04`; v0.9 added the TTL upkeep tests `x08`-`x10` and `m03`; v0.10 added
-`x11`-`x14` and `m04`), the 2 leaf golden-vector tests in `guard/src/test_vectors.rs` (the
+`x11`-`x14` and `m04`, then the platform fee cap tests `x15` (one basis point over the cap, and
+9,900 bps, refused at precheck and registration) and `x16` (exactly at the cap, registered and
+released)), the 2 leaf golden-vector tests in `guard/src/test_vectors.rs` (the
 same vectors are asserted by `packages/claims`), and 11 claim-registry tests. `cargo test -- --nocapture` prints the payout splits and the metered CPU
 and memory cost of a seller resolution with a depth-32 proof (`m02`).
 
@@ -65,6 +67,13 @@ untouched for 90 days). The views `check_escrow` and `registration` do not exten
 In every seller payout the seller's share is capped at the escrow amount (v0.8); overfunding and
 dust can only go to the buyer.
 
+Platform fee cap (v0.10): `check_escrow` and `register_escrow` refuse an escrow whose Trustless Work
+`platform_fee` is above `Cfg::max_platform_fee_bps` (set per deploy (500 bps in run 9; 3,000 bps planned for mainnet, because the platform fee also carries the DPD shipping Motored buys; an order whose quote is above the cap stays on the card rail)) with
+`PlatformFeeOverCap` (29). Trustless Work freezes the fee once the escrow holds a balance and the
+guard registers only from that point, so no escrow the guard pays out of carries a higher rate; an
+over-cap escrow is never registered, so every guard branch refuses it (`NotRegistered`). Before
+v0.10 the guard pinned the platform fee account but not the rate.
+
 Seller payout without a buyer leg (v0.10): `resolve_dispute` needs a map that sums to the escrow's
 live balance, so a buyer who removes their EURC trustline (or whose account Circle freezes) and sends
 1 unit of dust could make every seller resolution carry a buyer leg that reverts. The resolver
@@ -79,15 +88,16 @@ Public functions:
 | Function | Auth | Purpose |
 |---|---|---|
 | `__constructor(cfg: Cfg)` | deployer | Fixes the configuration |
-| `check_escrow(escrow)` | none (simulate) | Precheck before the buyer funds: pinned Wasm hash, guard in both roles, token, platform fee account, receiver = service provider, flags clear, milestone statuses set, zero balance |
-| `register_escrow(escrow)` | none | Register at balance > 0, then record `funded_at`, `approved_at`, `disputed_at` once each from on-chain state |
+| `check_escrow(escrow)` | none (simulate) | Precheck before the buyer funds: pinned Wasm hash, guard in both roles, token, platform fee account, platform fee at or under `max_platform_fee_bps`, receiver = service provider, flags clear, milestone statuses set, zero balance |
+| `register_escrow(escrow)` | none | Same pins and fee cap, then register at balance > 0 and record `funded_at`, `approved_at`, `disputed_at` once each from on-chain state |
 | `registration(escrow)` | none | Read the recorded `Reg` |
 | `contest(escrow, evidence)` | buyer | Switches off the approved-and-uncontested seller path for this escrow |
 | `propose_keys(release, resolver, breakglass)` / `apply_keys()` | admin / none | Timelocked rotation of all three keys (`rotate_delay`) |
 | `rotate_resolver(resolver)` | resolver_admin | Immediate resolver-key rotation |
 
 `Cfg` is the integration surface: `admin`, `resolver_admin`, `release_pk`, `resolver_pk`,
-`breakglass_pk`, `registry`, `token` (EURC SAC), `platform` (platform fee account), `tw_wasm`
+`breakglass_pk`, `registry`, `token` (EURC SAC), `platform` (platform fee account),
+`max_platform_fee_bps` (cap on the escrow's `platform_fee`, v0.10; 500 in run 9, 3,000 planned for mainnet), `tw_wasm`
 (pinned Trustless Work Wasm hash), `tw_fee` (`Some(address)` for the testnet lineage whose release,
 resolve and withdraw take `trustless_work_address` as argument 1; `None` for the mainnet lineage with
 a hardcoded fee account), `delay`, `rotate_delay`, `contest_window` (seconds).
@@ -96,7 +106,8 @@ Error codes (`GErr`) are stable: 1 NotRegistered, 2 WrongRole, 3 NotFunded, 4 Ch
 5 BadContext, 6 BadFn, 8 NoClaim, 9 BadRecipient, 10 TooEarly, 11 BadToken, 12 BadWasm,
 13 NotWholeToBuyer, 14 BadArgs, 15 BadFeeAddr, 16 ClaimPredatesEscrow, 17 Closed,
 18 AlreadySettled, 19 NoPending, 20 Timelocked, 21 BadMilestone, 22 BadPlatform, 23 BadRoles,
-24 NotEmpty, 25 Contested, 26 ContestTooLate, 27 NoDisputeSeen, 28 SellerOverAmount.
+24 NotEmpty, 25 Contested, 26 ContestTooLate, 27 NoDisputeSeen, 28 SellerOverAmount,
+29 PlatformFeeOverCap (v0.10).
 
 The `tw` module mirrors the Trustless Work v1 single-release storage types at upstream commit
 `6e4d40e25057dc51fcffd9c5cbee05eaf369380a` so the guard can decode `get_escrow`. See

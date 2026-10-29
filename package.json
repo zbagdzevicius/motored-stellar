@@ -24,6 +24,7 @@
     "testnet:e2e": "npm run testnet:e2e -w @motored-stellar/scripts --",
     "testnet:e2e-claims": "npm run testnet:e2e-claims -w @motored-stellar/scripts --",
     "testnet:refusals": "npm run testnet:refusals -w @motored-stellar/scripts --",
+    "testnet:v010": "npm run testnet:v010 -w @motored-stellar/scripts --",
     "metric": "npm run metric -w @motored-stellar/scripts --",
     "claims:recheck": "npm run claims:recheck -w @motored-stellar/scripts --"
   }
