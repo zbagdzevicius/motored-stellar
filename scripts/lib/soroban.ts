@@ -504,6 +504,57 @@ export class Chain {
     return { ...r, expectedCode: expectCode, confirmed };
   }
 
+  /**
+   * Lands a plain contract call (no guard signature) that the contract refuses, for example
+   * `register_escrow` on an escrow above the guard's platform fee cap, as a FAILED transaction.
+   * Never submits a call that would succeed:
+   *
+   * 1. the call is simulated and must fail with `expectCode` (otherwise nothing is submitted);
+   * 2. a failed simulation returns no footprint, so `footprintFrom` lists read-only calls that
+   *    touch the same entries (for `register_escrow`: the guard's `registration` of that escrow
+   *    and the escrow's own `get_escrow`); each must simulate, and the union of their footprints,
+   *    all read-only, is declared;
+   * 3. the call is submitted with that footprint and generous resources, fails in the host, and
+   *    the error is read back from the ledger's diagnostic events (`confirmed`).
+   */
+  async landFailingCall(
+    label: string,
+    signer: Keypair,
+    contractId: string,
+    fn: string,
+    args: xdr.ScVal[],
+    expectCode: number,
+    footprintFrom: Array<{ contractId: string; fn: string; args: xdr.ScVal[] }>,
+  ): Promise<LandedRefusal | Refusal> {
+    const sim = await this.server.simulateTransaction(await this.contractTx(signer.publicKey(), contractId, fn, args));
+    if (!rpc.Api.isSimulationError(sim)) return this.refuse(label, `simulation PASSES: not submitted (expected ${guardErrorLabel(expectCode)})`);
+    const m = sim.error.match(/Error\(Contract, #(\d+)\)/);
+    if (!m || Number(m[1]) !== expectCode) return this.refuse(label, `expected ${guardErrorLabel(expectCode)}, simulation said ${simCost(sim).error}; not submitted`);
+    const fps: xdr.LedgerFootprint[] = [];
+    let minFee = 0n;
+    for (const f of footprintFrom) {
+      const s = await this.server.simulateTransaction(await this.contractTx(signer.publicKey(), f.contractId, f.fn, f.args));
+      if (!rpc.Api.isSimulationSuccess(s) || !s.transactionData) return this.refuse(label, `footprint source ${f.fn}: ${simCost(s).error ?? 'no data'}`);
+      fps.push(s.transactionData.build().resources.footprint);
+      minFee += BigInt(s.minResourceFee);
+    }
+    const fp = mergeFootprints(fps);
+    const readOnly = [...fp.readOnly, ...fp.readWrite];
+    const instructions = 20_000_000;
+    const resourceFee = minFee * 2n + 10_000_000n;
+    const data = new SorobanDataBuilder().setFootprint(readOnly, []).setResources(instructions, 100_000, 5_000).setResourceFee(resourceFee).build();
+    this.note(`${label}: simulation refuses with ${guardErrorLabel(expectCode)}; landing it with a manual read-only footprint`, { readOnly: readOnly.length, instructions, resourceFee });
+    const acct = await this.server.getAccount(signer.publicKey());
+    const tx = new TransactionBuilder(acct, { fee: CONTRACT_BASE_FEE, networkPassphrase: this.cfg.passphrase })
+      .addOperation(new Contract(contractId).call(fn, ...args))
+      .setSorobanData(data)
+      .setTimeout(300)
+      .build();
+    const r = await this.send(label, tx, [signer]);
+    const confirmed = r.status === 'FAILED' && (r.errors ?? []).some((e) => e.startsWith(`Error(Contract, #${expectCode})`));
+    return { ...r, expectedCode: expectCode, confirmed };
+  }
+
   /** Classic operations (trustlines, payments) in one transaction. */
   async classic(label: string, source: Keypair, ops: xdr.Operation[], extraSigners: Keypair[] = []): Promise<TxResult> {
     const acct = await this.server.getAccount(source.publicKey());

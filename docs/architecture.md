@@ -1,6 +1,6 @@
 # Architecture
 
-Version 0.10 of the design (guard v0.10: v0.9 rules plus a seller dispute payout that no buyer leg can block, and mainnet-sized TTL upkeep; v0.9 added in-contract TTL upkeep to v0.8). Testnet only. This document describes an EURC payment
+Version 0.10 of the design (guard v0.10: v0.9 rules plus a seller dispute payout that no buyer leg can block, a cap on the escrow's platform fee rate, and mainnet-sized TTL upkeep; v0.9 added in-contract TTL upkeep to v0.8; v0.10 ran on testnet in run 9, 29 Oct 2026). Testnet only. This document describes an EURC payment
 rail for a marketplace that already takes cards: the buyer pays in Circle EURC on Stellar, the
 money sits in a non-custodial Trustless Work escrow until the buyer confirms receipt or, if the
 buyer stays silent, until 7 days after a recorded carrier delivery.
@@ -95,7 +95,7 @@ issued only for paid orders.
 | approver | Buyer wallet | The buyer confirms receipt by approving the milestone. |
 | service_provider | Seller wallet | Can change the milestone status and open a dispute; cannot move funds. |
 | receiver | Seller's own wallet | Never a ramp deposit address: the v1 escrow pays a plain address, does not apply its `receiver_memo`, and its `Address` roles cannot hold a muxed (M-) address. |
-| platform | Platform fee account (pinned in the guard per network) | Receives the platform fee; opens disputes; edits escrow properties only while unfunded; while funded can only append unapproved milestones, which can only block release. |
+| platform | Platform fee account (pinned in the guard per network; the fee rate is capped by the guard, v0.10) | Receives the platform fee; opens disputes; edits escrow properties only while unfunded; while funded can only append unapproved milestones, which can only block release. |
 | release_signer | Guard contract | Signs a release only with the release key. Trustless Work itself requires the buyer's approval and no open dispute, and pays only the fixed receiver. |
 | dispute_resolver | Guard contract | Pays only that escrow's buyer, or its seller against a verified claim anchored after full funding and at least 7 days old, or (buyer approved every milestone and a dispute is open, in either order) 7 days after both were recorded unless the buyer contested. Never more than the escrow amount to the seller. The resolver key holder may be a licensed third party. |
 
@@ -105,7 +105,8 @@ tested), so moving to Trustless Work v2 needs a new guard build for new escrows.
 EURC eligibility (v1 policy, enforced by the marketplace): single-seller carts; a carrier label
 minted by the platform, so the parcel goes to the order's delivery address; a destination where
 the carrier's authenticated tracking has already reported a delivery; a platform fee between 0
-and 9,900 basis points (Trustless Work's cap).
+and the guard's cap (`max_platform_fee_bps`, 500 basis points in run 9, 3,000 planned for mainnet; Trustless Work's
+own cap is 9,900). The guard enforces its cap (v0.10): an escrow above it is never registered.
 
 ## 3. Sequence
 
@@ -176,7 +177,8 @@ Behaviour relied on, from source and tested against both deployed Wasm files:
 - `release_funds` checks the signer is `roles.release_signer`, every milestone is approved and no
   dispute is open, then calls `release_signer.require_auth()`. It needs balance >= `amount`, pays
   fees on `amount` and the rest only to the fixed receiver. Any excess stays in the escrow.
-- Fees: `TRUSTLESS_WORK_FEE_BPS = 30` plus `platform_fee` (at most 9,900 bps), both floored on
+- Fees: `TRUSTLESS_WORK_FEE_BPS = 30` plus `platform_fee` (at most 9,900 bps in Trustless Work; the
+  guard registers only escrows at or under its own cap, set per deploy (500 bps in run 9; 3,000 bps planned for mainnet, because the platform fee also carries the DPD shipping Motored buys; an order whose quote is above the cap stays on the card rail)), both floored on
   the same base; each recipient's net is the remainder. Every exit transfers both fees first, in
   the same invocation (each only when above zero): if a fee account cannot receive EURC, the whole
   call reverts.
@@ -205,6 +207,7 @@ struct Cfg { admin: Address,            // offline; proposes key changes, applie
              release_pk, resolver_pk, breakglass_pk: BytesN<32>,
              registry: Address, token: Address /* EURC SAC */,
              platform: Address,         // platform fee account, the escrow's `platform` role
+             max_platform_fee_bps: u32, // v0.10: highest escrow platform_fee registered (500 in run 9, 3,000 planned for mainnet)
              tw_wasm: BytesN<32>,       // pinned Trustless Work Wasm hash for this network
              tw_fee: Option<Address>,   // Some(a) on the testnet lineage: argument 1 must equal a
              delay: u64, rotate_delay: u64, contest_window: u64 /* 7 days each */ }
@@ -219,6 +222,8 @@ struct Reg { buyer: Address, seller: Address, amount: i128,
 
 fn check_escrow(env, escrow) -> Result<(), Error>;      // read-only precheck, by simulation
 fn register_escrow(env, escrow) -> Result<Reg, Error>;  // permissionless register-or-refresh
+//   both: pinned Wasm, guard in both roles, token, platform account, receiver = service provider,
+//   and escrow.platform_fee <= max_platform_fee_bps (else PlatformFeeOverCap, #29; v0.10)
 fn contest(env, escrow, evidence: BytesN<32>);          // buyer auth
 fn propose_keys(env, release, resolver, breakglass);    // admin auth; applies after rotate_delay
 fn apply_keys(env);                                     // anyone, after the timelock
@@ -250,7 +255,19 @@ leg into every resolution, and that leg reverts; a Circle freeze of the buyer ha
 `withdraw_remaining_funds` has no sum rule, so v0.10 lets the resolver pay the seller's share
 through it alone, under the same claim or approval rules, at most the escrow amount and only once;
 the remainder stays in the escrow for a later withdrawal to the buyer. Tests `x12`-`x14` (both
-Trustless Work lineages) cover it with a buyer account that has no trustline.
+Trustless Work lineages) cover it with a buyer account that has no trustline, and run 9 landed it
+on testnet in Circle EURC: a buyer account that removed its trustline after funding, 1 unit of
+dust, the seller paid alone through `withdraw_remaining_funds`
+([testnet-proofs.md](testnet-proofs.md#run-9-guard-v010-on-circle-testnet-eurc-29-oct-2026-1903-to-1910-utc)).
+
+**Platform fee cap (v0.10).** The guard pins who receives the platform fee and, since v0.10, how
+much: `check_escrow` and `register_escrow` refuse an escrow whose `platform_fee` is above
+`max_platform_fee_bps` (#29), set at construction (set per deploy (500 bps in run 9; 3,000 bps planned for mainnet, because the platform fee also carries the DPD shipping Motored buys; an order whose quote is above the cap stays on the card rail)) and not rotatable.
+Trustless Work freezes the fee once the escrow holds a balance, and the guard registers only from
+then, so a registered escrow can never pay the platform a higher rate; an over-cap escrow is never
+registered and every guard branch refuses it. Tests `x15`-`x16` (both lineages) cover one basis
+point over the cap, 9,900 bps and exactly the cap; run 9 landed the over-cap `register_escrow` on
+testnet as a failed transaction.
 
 The leaf is built inside the guard and bound to the escrow address, so a claim for one escrow
 never pays another. Encodings: [leaf-format.md](leaf-format.md). The signature covers Soroban's
@@ -308,7 +325,8 @@ All amounts are in 7-decimal units (1 EURC = 10,000,000 units).
   (`card_net`), and at most 1 basis point of the escrow amount more.
 - **Platform fee.** `platform_fee_bps = floor((9970 * amount - 10000 * card_net) / amount)`.
   Trustless Work's 0.3% comes out of the platform's share. EURC is offered only when the result is
-  between 0 and 9,900. Trustless Work's floors can add at most 1 unit per fee per recipient in the
+  between 0 and the guard's cap (`max_platform_fee_bps`, 500 in run 9, 3,000 planned for mainnet; Trustless Work
+  itself allows up to 9,900); the guard refuses to register an escrow above its cap (v0.10). Trustless Work's floors can add at most 1 unit per fee per recipient in the
   recipient's favour; it is logged on its own reconciliation line.
 - **Refunds before release.** A resolution to the buyer returns the balance minus the 0.3% and the
   platform fee. The platform then sends the buyer a top-up of exactly those two amounts from its fee
@@ -341,6 +359,7 @@ All amounts are in 7-decimal units (1 EURC = 10,000,000 units).
 | Overfunded escrow, or third-party transfer | Excess stays after release | Resolutions rebuilt from the current balance; seller share capped (#28); after release `withdraw_remaining_funds` to the buyer (a seller share after release is refused, #17) |
 | Seller (or a compromised platform key) disputes after the buyer approved | Release blocked | Approval path after the 7-day contest window, at the release's net, unless the buyer contested |
 | Escrow names another platform address (compromised checkout) | Platform fee leg would go elsewhere | Precheck and registration refuse it (#22): the guard authorises no exit, funds stay locked rather than paid out |
+| Escrow carries a platform fee above the guard's cap (compromised checkout or backend bug) | Platform would take more than its rate | Precheck and registration refuse it (#29, v0.10): the guard authorises no exit, funds stay locked rather than paid out; landed on testnet in run 9 |
 | Platform appends a milestone to a funded escrow | Release blocked | Alert on any `update_escrow` of a registered escrow; recover by dispute and resolution |
 | Seller has no EURC trustline | Payout to the seller reverts | Pre-flight trustline check before every release or resolution; a removed trustline is restored only with the seller's own signature (ChangeTrust), then sponsored again |
 | Buyer removes their EURC trustline (or is frozen) and dusts the escrow | Every resolution has a reverting buyer leg | v0.10: the seller's share is paid alone through `withdraw_remaining_funds` (same rules, capped, once); the remainder waits for the buyer (tests `x12`-`x14`) |

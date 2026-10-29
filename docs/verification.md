@@ -24,6 +24,13 @@ Run 8, 29 Oct 2026, 11:56 to 12:05 UTC, was the first on Circle's testnet EURC (
 deployment of guard v0.9 (uploaded Wasm `c3fe2055...`, the workspace 0.9.0 build), scenarios A to E
 with 2 EURC orders and four refusals landed as failed transactions
 ([testnet-proofs.md](testnet-proofs.md#run-8-real-circle-testnet-eurc-guard-v09-29-oct-2026-1156-to-1205-utc)).
+Run 9, 29 Oct 2026, 19:03 to 19:10 UTC, deployed guard v0.10 (optimised Wasm sha256
+`2a21ef35e57f8505861296e2b93a09c5aa2117c66a5fb5d3d2cbcefe3087fbb5`, 22,664 bytes, platform fee cap
+500 bps) and a fresh claim registry (`e829dc52...`) on Circle's testnet EURC and landed a
+buyer-approved release, the v0.10 seller-only `withdraw_remaining_funds` payout past a buyer with no
+trustline and 1 unit of dust, and an over-cap `register_escrow` as a failed transaction
+(`PlatformFeeOverCap` = 29)
+([testnet-proofs.md](testnet-proofs.md#run-9-guard-v010-on-circle-testnet-eurc-29-oct-2026-1903-to-1910-utc)).
 
 ## Test runs of this repository
 
@@ -37,8 +44,10 @@ with 2 EURC orders and four refusals landed as failed transactions
 | 29 Oct 2026 | Local (not CI), repo finalize, version 0.9.0 | `cargo test`: 83 passed (guard 75, claim registry 8); vitest: 410 passed across the eight workspaces (claims 35, escrow 73, eurc 67, ramps 56, reconciler 55, wallets 61, scripts 55, example 8; adds the CAP-71 V2 auth-entry tests in `packages/escrow` and `packages/wallets`, the V2 fee-bump refusals in `packages/eurc` and the getTransfers paging tests in `packages/reconciler`); typecheck clean; docs lint clean; `check-secrets` OK; `stellar contract build` and `optimize` at workspace version 0.9.0: guard `c3fe2055...` (see the note under Guard v0.9 below). The README quotes this row. |
 | 29 Oct 2026 | GitHub Actions, run 8 commit | All four jobs green; vitest 413 (adds the --asset, decimal-amount and faucet-drip tests in scripts): https://github.com/zbagdzevicius/motored-stellar/actions/runs/40872318292 |
 | 29 Oct 2026 | GitHub Actions, v0.9 commits | All four jobs green (contracts, TypeScript on Node 22 and 24, secrets and lint): https://github.com/zbagdzevicius/motored-stellar/actions/runs/40855043032 |
-| 29 Oct 2026 | Local (not CI), architecture audit fixes, version 0.10.0 | `cargo test --locked -- --test-threads=1`: 95 passed (guard 84: 82 rule and TTL tests plus 2 leaf golden-vector tests; claim registry 11); `stellar contract build` passes; vitest: 445 passed across the eight workspaces (claims 42, escrow 89, eurc 67, ramps 56, reconciler 58, wallets 61, scripts 64, example 8; adds the event-reader paging and RPC-limit tests, the submitter retry, idempotency and mempool-eviction resend tests in all three submitters, the revoked-key upkeep test and the funded-in-window metric tests); typecheck and docs lint clean. Guard v0.10 is not yet deployed on testnet; runs 7 and 8 ran v0.9 |
+| 29 Oct 2026 | Local (not CI), architecture audit fixes, version 0.10.0 | `cargo test --locked -- --test-threads=1`: 95 passed (guard 84: 82 rule and TTL tests plus 2 leaf golden-vector tests; claim registry 11); `stellar contract build` passes; vitest: 445 passed across the eight workspaces (claims 42, escrow 89, eurc 67, ramps 56, reconciler 58, wallets 61, scripts 64, example 8; adds the event-reader paging and RPC-limit tests, the submitter retry, idempotency and mempool-eviction resend tests in all three submitters, the revoked-key upkeep test and the funded-in-window metric tests); typecheck and docs lint clean. Guard v0.10 was not yet deployed on testnet then (runs 7 and 8 ran v0.9; run 9 deployed v0.10 with the fee cap) |
 | 29 Oct 2026 | Local (not CI), silent-buyer cap raised from one half to two thirds | vitest: 448 passed across the eight workspaces (claims 42, escrow 89, eurc 67, ramps 56, reconciler 60, wallets 61, scripts 65, example 8; adds the two-thirds cap, the two-per-approval and the 7-of-20 floor tests in the reconciler and the two-thirds footprint test in scripts); typecheck and docs lint clean. Rust counts unchanged (95) |
+| 29 Oct 2026 | Local (not CI), guard v0.10 platform fee cap | `cargo test --locked -- --test-threads=1`: 99 passed (guard 88: 86 rule and TTL tests, adding `x15`-`x16` on both Trustless Work lineages, plus 2 leaf golden-vector tests; claim registry 11); `stellar contract build` passes; vitest: 453 passed across the eight workspaces (claims 42, escrow 89, eurc 67, ramps 56, reconciler 60, wallets 61, scripts 69, example 9; adds the `max_platform_fee_bps` Cfg, flag-parsing, fee-cap probe and run budget tests in scripts and the fee-cap mirror test in the example); typecheck and docs lint clean |
+| 29 Oct 2026 | Testnet, run 9 on Circle testnet EURC, guard v0.10 `CCRZHNU2...J2KVUZ` | `testnet:e2e` (A release after buyer approval, seller received 1.9 EURC, claim re-check ok; B dispute refund and C break-glass refund, each buyer netting 100% after the top-up) and `testnet:v010` (F1 `register_escrow` of an escrow at 501 bps landed as FAILED with `Error(Contract, #29) PlatformFeeOverCap`, confirmed from the ledger; F2 at 500 bps registered; W seller paid 1.9 EURC alone through `withdraw_remaining_funds` against a claim, past a buyer account with no EURC trustline and 1 unit of dust that stays in the escrow, registration closed, a second seller withdrawal refused with `Closed` = 17 in simulation). Links in [testnet-proofs.md, Run 9](testnet-proofs.md#run-9-guard-v010-on-circle-testnet-eurc-29-oct-2026-1903-to-1910-utc) |
 | 29 Oct 2026 | Testnet, run 8 on Circle testnet EURC, guard v0.9 `CAYLUEO3...RRXNQC` | `testnet:e2e` (A release, B dispute refund, C break-glass refund), `testnet:e2e-claims` (D silent-buyer payout against a depth-32 claim, E buyer contest then refund) and `testnet:refusals` (`BadFeeAddr` = 15, `NoClaim` = 8, `NotWholeToBuyer` = 13, `Contested` = 25 landed as FAILED, each code confirmed from the ledger) all passed with 2 EURC orders; the seller received 1.9 EURC in e2e A and in D, every refunded buyer netted 100% after the top-up. `npm run claims:recheck -- --from-state` afterwards: `ok: true` for D (depth 32) and, with `--index 0`, for A. Links in [testnet-proofs.md, Run 8](testnet-proofs.md#run-8-real-circle-testnet-eurc-guard-v09-29-oct-2026-1156-to-1205-utc) |
 | 29 Oct 2026 | Testnet, `npm run metric` | Run against the real escrows of runs 4 to 6 and of run 7: VERDICT FAIL (exit 3) on both, as expected for test volumes (300.0000000 over 3 escrows; 200.0000000 over 2 escrows); see [Re-run over runs 4 to 7](#re-run-over-runs-4-to-7-29-oct-2026-after-run-7) |
 
@@ -59,7 +68,7 @@ whose auth entries all use source-account credentials, so it refuses V2 address 
 refuses legacy ones (new tests). Other package changes in the set are comments only (resolved or
 deliverable-tagged `TODO(verify)` markers).
 
-The architecture audit fixes of 29 Oct 2026 (version 0.10.0, not yet on testnet) change logic in:
+The architecture audit fixes of 29 Oct 2026 (version 0.10.0, on testnet since run 9) change logic in:
 the guard (`withdraw_remaining_funds` may pay the seller under the same rules as a resolution,
 capped at the escrow amount and once, so a buyer who removes their trustline and dusts the escrow
 cannot block the seller; TTL values raised to 120 / 150 days, at or above mainnet's minimum; new
@@ -68,7 +77,11 @@ tests `x11`-`x14` and `m04`); the claim registry (the same TTL values; `revoke`,
 RPC `getEvents` limits, submitter retries and idempotency); `packages/claims` (keeper upkeep of
 `Revoked` keys); `packages/reconciler/src/metric.ts` and `scripts/metric` (escrows funded in the
 45-day window count if they close within 14 days after it); `scripts/metric/collect.ts` (refuses a
-start ledger outside RPC retention).
+start ledger outside RPC retention). The guard's platform fee cap of the same day adds one more
+logic change: `Cfg::max_platform_fee_bps` (set at construction, 500 in run 9, 3,000 planned for mainnet), checked in
+`check_escrow` and `register_escrow` with the new error `PlatformFeeOverCap` = 29 (tests `x15`-`x16`);
+`scripts/testnet/deploy.ts` passes it (`--max-platform-fee-bps`, default 500),
+`scripts/lib/soroban.ts` gains `landFailingCall` and `scripts/testnet/v010.ts` is the run 9 script.
 
 ## On-chain metric, dry run on testnet (29 Oct 2026)
 
@@ -140,7 +153,7 @@ above (runs 4 and 5 only) was not affected: all its transfers were on the first 
 | v0.7 | 52 passed, 0 failed | 25 lineage tests x 2 Wasm files + `m01` + `m02` |
 | v0.8 | 66 passed, 0 failed | 32 lineage tests (`t01`-`t25`, `x01`-`x07`) x 2 Wasm files + `m01` + `m02` |
 | v0.9 | 73 passed, 0 failed (29 Oct 2026, local) | 35 lineage tests (adds `x08`-`x10`, TTL upkeep) x 2 Wasm files + `m01` + `m02` + `m03` (TTL upkeep on the built Wasm); plus the 2 leaf golden-vector tests, 75 in the guard crate |
-| v0.10 | 82 passed, 0 failed (29 Oct 2026, local) | 39 lineage tests (adds `x11`, mainnet-sized TTL, and `x12`-`x14`, the seller payout through `withdraw_remaining_funds` with a buyer that has no trustline) x 2 Wasm files + `m01`-`m04` (`m04`: the built Wasm on a mainnet-sized ledger); plus the 2 leaf golden-vector tests, 84 in the guard crate; claim registry 11 |
+| v0.10 | 86 passed, 0 failed (29 Oct 2026, local) | 41 lineage tests (adds `x11`, mainnet-sized TTL; `x12`-`x14`, the seller payout through `withdraw_remaining_funds` with a buyer that has no trustline; `x15`-`x16`, the platform fee cap) x 2 Wasm files + `m01`-`m04` (`m04`: the built Wasm on a mainnet-sized ledger); plus the 2 leaf golden-vector tests, 88 in the guard crate; claim registry 11. Before the fee cap: 82 (84 in the crate) |
 
 Trustless Work Wasm: testnet `7c3f7b2af92ad86092708b23babf80f9e1308d7f3ce18b703b9499192ecc934b`,
 mainnet `96d51751f924c938a081deb740056dc1c5cc60c6e645672062531f82957ed2fe`
@@ -173,7 +186,7 @@ Key results:
   (stellar CLI 23.4.0, rustc 1.93.0). The claim registry's optimised Wasm is unchanged
   (`af18affa...`). The run 7 hash refers to the deployed build; a fresh deployment from this
   repository uploads `c3fe2055...` (once optimised).
-- v0.10 (this repository, 29 Oct 2026, not yet deployed): `TTL_THRESHOLD` 2,073,600 ledgers (120
+- v0.10 (this repository, 29 Oct 2026, deployed in run 9): `TTL_THRESHOLD` 2,073,600 ledgers (120
   days, mainnet's `min_persistent_ttl`) and `TTL_EXTEND_TO` 2,592,000 (150 days) in the guard and
   the claim registry; v0.9's 518,400 / 1,036,800 sat below the mainnet minimum, so its upkeep would
   have done nothing on mainnet for an entry's first 90 days. `x11` and `m04` check that the
@@ -182,6 +195,13 @@ Key results:
   buyer leg reverts ("trustline entry is missing for account"), while the seller's share is paid
   alone through `withdraw_remaining_funds` on the claim and approval paths, refused above the
   amount (#28), without a claim (#8), inside the contest window (#10) and a second time (#17).
+  `x15`: an escrow at one basis point over `max_platform_fee_bps` (and one at 9,900) fails
+  `check_escrow` and `register_escrow` with `PlatformFeeOverCap` (#29), and, funded anyway, every
+  release or resolution through the guard fails `NotRegistered` (#1); `x16`: an escrow exactly at
+  the cap registers and its release pays the platform exactly 5%. Guard v0.10 optimised Wasm sha256
+  `2a21ef35e57f8505861296e2b93a09c5aa2117c66a5fb5d3d2cbcefe3087fbb5` (22,664 bytes, workspace
+  version 0.10.0, stellar CLI 23.4.0, rustc 1.93.0), deployed in run 9; claim registry v0.10
+  `e829dc52672dbc8aebca65c6595416ca2b8fba5b787a575e4a487dda3d808870` (4,161 bytes).
 
 ## Testnet run 1 (guard v0.6, 24 Oct 2026)
 

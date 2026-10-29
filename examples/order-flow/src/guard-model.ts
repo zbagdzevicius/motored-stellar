@@ -10,7 +10,8 @@
 // TypeScript, with the contract's error codes, so the example can show every
 // guard rule in action without a Soroban host:
 //
-//   check_escrow      roles, platform pin, receiver == service provider, zero
+//   check_escrow      roles, platform pin, platform fee cap (v0.10, when
+//                     configured), receiver == service provider, zero
 //                     balance, open flags, non-empty unapproved milestones;
 //   register_escrow   buyer, seller, amount frozen at balance > 0; funded_at,
 //                     approved_at, disputed_at recorded once each;
@@ -50,6 +51,7 @@ export enum GuardErrorCode {
   ContestTooLate = 26,
   NoDisputeSeen = 27,
   SellerOverAmount = 28,
+  PlatformFeeOverCap = 29,
 }
 
 export class GuardError extends Error {
@@ -72,6 +74,13 @@ export interface GuardModelConfig {
   address: string;
   /** Platform fee account pinned per network. */
   platform: string;
+  /**
+   * Guard v0.10 `max_platform_fee_bps`: the highest `platform_fee` the guard registers (500 in run 9;
+   * 3,000 planned for mainnet, since the platform fee also carries DPD shipping). Unset, the cap is
+   * not modelled; the example's fee rule (D3b) quotes about 1,289 bps for its sample cart, under the
+   * mainnet cap and above run 9's.
+   */
+  maxPlatformFeeBps?: number;
   releaseKey: Uint8Array;
   resolverKey: Uint8Array;
   breakGlassKey: Uint8Array;
@@ -244,6 +253,9 @@ export class GuardModel {
       throw new GuardError(GuardErrorCode.WrongRole);
     }
     if (e.roles.platform !== this.cfg.platform) throw new GuardError(GuardErrorCode.BadPlatform);
+    if (this.cfg.maxPlatformFeeBps !== undefined && e.platformFeeBps > this.cfg.maxPlatformFeeBps) {
+      throw new GuardError(GuardErrorCode.PlatformFeeOverCap);
+    }
     if (e.roles.receiver !== e.roles.serviceProvider) throw new GuardError(GuardErrorCode.BadRoles);
   }
 }

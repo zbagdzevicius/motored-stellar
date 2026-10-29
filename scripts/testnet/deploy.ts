@@ -1,5 +1,6 @@
 /**
  * npm run testnet:deploy [-- --delay 120 --contest-window 120 --rotate-delay 604800]
+ *                        [-- --platform-fee-bps 470 --max-platform-fee-bps 500]
  *                        [-- --guard-wasm <path> --registry-wasm <path>]
  *                        [-- --asset EURC:<issuer G...> --amount 2]
  *
@@ -38,7 +39,7 @@ import { isMain, runMain, consoleOut, type Out } from '../lib/cli.js';
 import { FileKeyStore, accountKeypair, requireKeys, type KeyStore, type TestnetKeys } from '../lib/keystore.js';
 import { assertTestnetLive, contractLink, testnetConfig } from '../lib/network.js';
 import { WASM_DIR } from '../lib/paths.js';
-import { addr, bytes, map, optAddr, u64 } from '../lib/scval.js';
+import { addr, bytes, map, optAddr, u32, u64 } from '../lib/scval.js';
 import { Chain } from '../lib/soroban.js';
 import { writeState, type TestnetState } from '../lib/state.js';
 import { TW_WASM_HASH } from '../lib/tw.js';
@@ -49,6 +50,8 @@ export const ASSET_CODE = 'XEUR';
 const BUYER_FLOAT = '5000';
 /** Platform float so refund top-ups never wait on fee income. */
 const PLATFORM_FLOAT = '100';
+/** The guard's cap on an escrow's Trustless Work `platform_fee` (guard v0.10 `Cfg::max_platform_fee_bps`): 5%. */
+export const DEFAULT_MAX_PLATFORM_FEE_BPS = 500;
 /** Default per-order amount for the e2e scripts: 100 XEUR, or 2 units of an external asset (one 10 EURC faucet drip covers every scenario). */
 export const DEFAULT_ORDER_AMOUNT = { standIn: '100', external: '2' } as const;
 
@@ -78,6 +81,15 @@ export interface GuardCfgInput {
   delay: number;
   rotateDelay: number;
   contestWindow: number;
+  /** Highest `platform_fee` (bps) the guard registers (v0.10); default DEFAULT_MAX_PLATFORM_FEE_BPS. */
+  maxPlatformFeeBps?: number;
+}
+
+/** Parses a basis-point flag: an integer from 0 to 10,000 (fits the guard's u32). */
+export function parseBps(name: string, v: string): number {
+  const n = Number(v);
+  if (!/^\d+$/.test(v.trim()) || !Number.isSafeInteger(n) || n > 10_000) throw new Error(`--${name} must be an integer from 0 to 10000 (basis points), got ${v}`);
+  return n;
 }
 
 /** The guard's `Cfg` constructor argument (contracts/guard), fields sorted by name. */
@@ -88,6 +100,7 @@ export function guardCfg(i: GuardCfgInput): xdr.ScVal {
     breakglass_pk: bytes(Buffer.from(k.guardKeys.breakglass.publicKeyHex, 'hex')),
     contest_window: u64(i.contestWindow),
     delay: u64(i.delay),
+    max_platform_fee_bps: u32(i.maxPlatformFeeBps ?? DEFAULT_MAX_PLATFORM_FEE_BPS),
     platform: addr(k.accounts.platform.publicKey),
     registry: addr(i.registry),
     release_pk: bytes(Buffer.from(k.guardKeys.release.publicKeyHex, 'hex')),
@@ -118,6 +131,7 @@ export async function main(argv: string[] = process.argv.slice(2), store: KeySto
       'contest-window': { type: 'string', default: '120' },
       'rotate-delay': { type: 'string', default: '604800' },
       'platform-fee-bps': { type: 'string', default: '470' },
+      'max-platform-fee-bps': { type: 'string', default: String(DEFAULT_MAX_PLATFORM_FEE_BPS) },
       'guard-wasm': { type: 'string' },
       'registry-wasm': { type: 'string' },
       asset: { type: 'string' },
@@ -127,6 +141,9 @@ export async function main(argv: string[] = process.argv.slice(2), store: KeySto
   const external = values.asset ? parseAssetArg(values.asset) : undefined;
   const orderAmount = values.amount ?? (external ? DEFAULT_ORDER_AMOUNT.external : DEFAULT_ORDER_AMOUNT.standIn);
   parseAmount(orderAmount); // fail before anything is signed
+  const platformFeeBps = parseBps('platform-fee-bps', values['platform-fee-bps']);
+  const maxPlatformFeeBps = parseBps('max-platform-fee-bps', values['max-platform-fee-bps']);
+  if (platformFeeBps > maxPlatformFeeBps) throw new Error(`--platform-fee-bps ${platformFeeBps} is above the guard's cap --max-platform-fee-bps ${maxPlatformFeeBps}: the guard would refuse every escrow`);
   const cfg = testnetConfig(process.env.MS_TESTNET_RPC);
   const chain = new Chain(cfg, out.log);
   await assertTestnetLive(chain.server, cfg);
@@ -166,7 +183,7 @@ export async function main(argv: string[] = process.argv.slice(2), store: KeySto
   const guardWasm = readFileSync(pickWasm(values['guard-wasm'], 'motored_escrow_guard'));
   const guardHash = await chain.uploadWasmFeeBump('upload guard', guardWasm, sponsor);
   const guard = await chain.deployContract('deploy guard', sponsor, guardHash, [
-    guardCfg({ keys, registry, token: sac, delay, rotateDelay, contestWindow }),
+    guardCfg({ keys, registry, token: sac, delay, rotateDelay, contestWindow, maxPlatformFeeBps }),
   ]);
 
   // 4. Trustless Work deployer instance (their Wasm is already on testnet; nothing is uploaded).
@@ -184,7 +201,7 @@ export async function main(argv: string[] = process.argv.slice(2), store: KeySto
     guardWasmHash: guardHash,
     registryWasmHash: registryHash,
     twWasmHash: TW_WASM_HASH.testnet,
-    guardConfig: { delay, rotateDelay, contestWindow, platformFeeBps: Number(values['platform-fee-bps']) },
+    guardConfig: { delay, rotateDelay, contestWindow, platformFeeBps, maxPlatformFeeBps },
     claims: [],
   };
   writeState(state);

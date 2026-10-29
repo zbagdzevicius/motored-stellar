@@ -12,6 +12,8 @@ export interface GuardConfigRecord {
   rotateDelay: number;
   contestWindow: number;
   platformFeeBps: number;
+  /** Guard v0.10 `Cfg::max_platform_fee_bps`; absent in states written for guard v0.9 and earlier. */
+  maxPlatformFeeBps?: number;
 }
 
 export interface TestnetState {

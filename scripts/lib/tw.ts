@@ -81,4 +81,5 @@ export const GUARD_ERRORS: Record<number, string> = {
   13: 'NotWholeToBuyer', 14: 'BadArgs', 15: 'BadFeeAddr', 16: 'ClaimPredatesEscrow', 17: 'Closed',
   18: 'AlreadySettled', 19: 'NoPending', 20: 'Timelocked', 21: 'BadMilestone',
   22: 'BadPlatform', 23: 'BadRoles', 24: 'NotEmpty', 25: 'Contested', 26: 'ContestTooLate', 27: 'NoDisputeSeen', 28: 'SellerOverAmount',
+  29: 'PlatformFeeOverCap',
 };

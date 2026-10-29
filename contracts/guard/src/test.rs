@@ -2,10 +2,10 @@
 //! Guard v0.10 tests against Trustless Work's DEPLOYED single-release v1 Wasm files:
 //!   testnet 7c3f7b2a... (release/resolve/withdraw take trustless_work_address as arg 1)
 //!   mainnet 96d51751... (fee account GBWWSOAT... hardcoded)
-//! Each test in the `lineage!` macro runs for both lineages (modules `tn` and `mn`): 2 x 39 tests,
-//! plus m01, m02, m03 and m04, 82 in total (v0.9 added x08 to x10 and m03, the TTL upkeep tests;
+//! Each test in the `lineage!` macro runs for both lineages (modules `tn` and `mn`): 2 x 41 tests,
+//! plus m01, m02, m03 and m04, 86 in total (v0.9 added x08 to x10 and m03, the TTL upkeep tests;
 //! v0.10 added x11 to x14 and m04: the seller withdrawal that no buyer leg can block, and
-//! mainnet-sized TTL upkeep).
+//! mainnet-sized TTL upkeep; then x15 and x16: the platform fee cap).
 //!
 //! Prerequisites (see contracts/README.md):
 //!   ./third_party/tw-wasm/fetch.sh     the two Trustless Work Wasm files, verified by SHA-256
@@ -54,6 +54,7 @@ const GUARD_WASM: &[u8] =
     include_bytes!("../../target/wasm32v1-none/release/motored_escrow_guard.wasm");
 const AMT: i128 = 100_0000000; // 100 units, 7 decimals
 const PFEE: u32 = 470; // platform fee bps
+const PFEE_CAP: u32 = 500; // Cfg::max_platform_fee_bps, as in run 9
 
 pub struct W {
     pub env: Env,
@@ -132,6 +133,7 @@ pub fn world_ttl(wasm: &[u8], fee_arg: bool, wasm_guard: bool, min_persistent: O
         registry: reg.clone(),
         token: token.clone(),
         platform: platform.clone(),
+        max_platform_fee_bps: PFEE_CAP,
         tw_wasm: BytesN::from_array(&env, &sha(wasm)),
         tw_fee: if fee_arg { Some(fee.clone()) } else { None },
         delay: 7 * DAY,
@@ -416,6 +418,16 @@ mod $m {
         if !$fee_arg { give_gbww_trustline(&w); }
         w.env.mock_all_auths();
         let p = props(&w, status, &w.token);
+        twc::Client::new(&w.env, &w.escrow).initialize_escrow(&p);
+        w
+    }
+    /// An escrow whose `platform_fee` is `bps` instead of PFEE.
+    pub fn setup_fee(bps: u32) -> W {
+        let w = world($wasm, $fee_arg);
+        if !$fee_arg { give_gbww_trustline(&w); }
+        w.env.mock_all_auths();
+        let mut p = props(&w, "awaiting delivery", &w.token);
+        p.platform_fee = bps;
         twc::Client::new(&w.env, &w.escrow).initialize_escrow(&p);
         w
     }
@@ -1268,6 +1280,42 @@ mod $m {
         assert!(resolve(&w, "withdraw_remaining_funds", &db, K_RES, &w.k_res, None, true));
         assert_eq!(w.bal(&w.buyer) - b0, net(AMT - s));
         assert_eq!(w.bal(&w.escrow), 0);
+    }
+
+    #[test]
+    fn x15_platform_fee_above_the_cap_is_refused_at_precheck_and_registration() {
+        let w = setup_fee(PFEE_CAP + 1);
+        assert_eq!(w.guardc().try_check_escrow(&w.escrow), Err(Ok(GErr::PlatformFeeOverCap)));
+        // funded anyway (the platform hands out the funding call regardless): never registered
+        assert!(fund(&w, AMT));
+        assert_eq!(w.guardc().try_register_escrow(&w.escrow), Err(Ok(GErr::PlatformFeeOverCap)));
+        assert!(w.guardc().registration(&w.escrow).is_none());
+        // so no guard branch pays out of it: every payout fails NotRegistered
+        assert!(ship_and_approve(&w));
+        assert!(!release(&w, K_REL, &w.k_rel, true));
+        assert!(w.guard_err(1), "NotRegistered");
+        assert!(dispute(&w, &w.buyer));
+        let mut db = Map::new(&w.env); db.set(w.buyer.clone(), AMT);
+        assert!(!resolve(&w, "resolve_dispute", &db, K_RES, &w.k_res, None, true));
+        assert!(w.guard_err(1), "NotRegistered");
+        // a far higher rate is refused the same way
+        let w2 = setup_fee(9_900);
+        assert_eq!(w2.guardc().try_check_escrow(&w2.escrow), Err(Ok(GErr::PlatformFeeOverCap)));
+    }
+
+    #[test]
+    fn x16_platform_fee_at_the_cap_is_accepted_and_paid() {
+        let w = setup_fee(PFEE_CAP);
+        assert!(matches!(w.guardc().try_check_escrow(&w.escrow), Ok(Ok(()))));
+        assert!(fund(&w, AMT));
+        assert!(w.register());
+        assert!(ship_and_approve(&w));
+        assert!(w.register());
+        assert!(release(&w, K_REL, &w.k_rel, true));
+        let tw_fee = AMT * 30 / 10000; let pf = AMT * (PFEE_CAP as i128) / 10000;
+        assert_eq!(w.bal(&w.platform), pf);
+        assert_eq!(w.bal(&w.seller), AMT - tw_fee - pf);
+        assert!(w.reg_of().closed);
     }
 
 }

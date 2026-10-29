@@ -18,7 +18,8 @@
 //!   the whole distribution goes to the buyer.
 //!
 //! The guard only registers escrows that run the pinned Trustless Work Wasm hash, use the pinned
-//! token (EURC) and the pinned platform fee account, and name the guard in both roles.
+//! token (EURC) and the pinned platform fee account, carry a `platform_fee` no higher than the
+//! configured cap (`max_platform_fee_bps`, v0.10), and name the guard in both roles.
 //!
 //! The tests in `src/test.rs` run every rule against Trustless Work's deployed v1 Wasm files
 //! (testnet `7c3f7b2a...`, mainnet `96d51751...`), fetched by hash.
@@ -140,6 +141,10 @@ pub struct Cfg {
     pub token: Address,
     /// Platform fee account (the Trustless Work `platform` role) on this network.
     pub platform: Address,
+    /// Highest Trustless Work `platform_fee` (basis points) an escrow may carry: 500 (5%) in our
+    /// deployments (v0.10). Checked wherever the guard inspects an escrow (`check_escrow`,
+    /// `register_escrow`), so the platform can never register an escrow that pays it a higher rate.
+    pub max_platform_fee_bps: u32,
     /// Pinned Trustless Work single-release v1 Wasm hash on this network.
     pub tw_wasm: BytesN<32>,
     /// `Some(a)`: this Wasm lineage takes `trustless_work_address` as argument 1 and it must equal `a`.
@@ -263,6 +268,8 @@ pub enum GErr {
     ContestTooLate = 26,
     NoDisputeSeen = 27,
     SellerOverAmount = 28,
+    /// v0.10: the escrow's `platform_fee` is above `Cfg::max_platform_fee_bps`.
+    PlatformFeeOverCap = 29,
 }
 
 #[contractevent]
@@ -367,7 +374,7 @@ fn dist_at(env: &Env, args: &Vec<Val>, i: u32) -> Result<Map<Address, i128>, GEr
         .map_err(|_| GErr::BadArgs)
 }
 
-/// Pinned-Wasm check, then decode and check roles, token and platform.
+/// Pinned-Wasm check, then decode and check roles, token, platform and the platform fee cap.
 fn inspect(env: &Env, c: &Cfg, escrow: &Address) -> Result<tw::Escrow, GErr> {
     match escrow.executable() {
         Some(Executable::Wasm(h)) if h == c.tw_wasm => {}
@@ -383,6 +390,11 @@ fn inspect(env: &Env, c: &Cfg, escrow: &Address) -> Result<tw::Escrow, GErr> {
     }
     if e.roles.platform != c.platform {
         return Err(GErr::BadPlatform);
+    }
+    // v0.10: Trustless Work freezes `platform_fee` once the balance is above zero, and the guard only
+    // registers from that point, so checking it here bounds every escrow the guard ever pays out.
+    if e.platform_fee > c.max_platform_fee_bps {
+        return Err(GErr::PlatformFeeOverCap);
     }
     if e.roles.receiver != e.roles.service_provider {
         return Err(GErr::BadRoles);
@@ -406,9 +418,9 @@ impl Guard {
     }
 
     /// Read-only precheck, run by simulation BEFORE any funding transaction is handed out:
-    /// pinned Wasm, mirror-type decode, guard in both roles, token, platform, receiver equals service
-    /// provider, all flags false, statuses set, and a ZERO balance (a dusted escrow is frozen early
-    /// and is abandoned).
+    /// pinned Wasm, mirror-type decode, guard in both roles, token, platform, platform fee at or under
+    /// the cap, receiver equals service provider, all flags false, statuses set, and a ZERO balance
+    /// (a dusted escrow is frozen early and is abandoned).
     pub fn check_escrow(env: Env, escrow: Address) -> Result<(), GErr> {
         let c = cfg(&env);
         let e = inspect(&env, &c, &escrow)?;
