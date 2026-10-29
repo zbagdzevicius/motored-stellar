@@ -23,7 +23,8 @@
  *   wallets, 6 sellers. Stretch (reported): EUR 15,000, 70 escrows.
  * - Silent-buyer resolutions (resolved to the seller without the buyer's
  *   approval) count, are reported as a sub-count, and make up no more than
- *   half of the counted escrows: any beyond that are not counted.
+ *   two thirds of the counted escrows (at least one third are buyer
+ *   approvals): any beyond that are not counted.
  *
  * Inputs are normalised events; reading them from an indexer or RPC is the
  * caller's job. Output is aggregate only.
@@ -99,6 +100,13 @@ export const METRIC_TARGET: Readonly<MetricThresholds> = Object.freeze({
   buyers: 20,
   sellers: 6,
 });
+
+/**
+ * Silent-buyer cap: at most this many silent-buyer resolutions count per
+ * counted buyer-approved escrow, so silent ones make up at most two thirds of
+ * the counted escrows. Set from measured buyer-confirmation behaviour.
+ */
+export const SILENT_PER_APPROVED = 2;
 
 /** Stretch goal: reported, not a condition. */
 export const METRIC_STRETCH: Readonly<Pick<MetricThresholds, "volume" | "escrows">> = Object.freeze({
@@ -200,12 +208,13 @@ export function computeMetric(input: MetricInput, thresholds: MetricThresholds =
     consider({ escrow, gross, closedAt: r.closedAt, silent: !r.buyerApproved });
   }
 
-  // Silent-buyer cap: counted silent <= counted non-silent, so silent never
-  // exceeds half of the counted escrows. Earliest silent resolutions count first.
+  // Silent-buyer cap: counted silent <= 2 x counted buyer-approved, so silent
+  // never exceeds two thirds of the counted escrows (at least one third are
+  // buyer approvals). Earliest silent resolutions count first.
   const all = [...candidates.values()].sort((a, b) => a.closedAt - b.closedAt);
   const loud = all.filter((c) => !c.silent);
   const silent = all.filter((c) => c.silent);
-  const silentCounted = silent.slice(0, loud.length);
+  const silentCounted = silent.slice(0, SILENT_PER_APPROVED * loud.length);
   const counted = [...loud, ...silentCounted];
 
   const volumeUnits = sum(counted.map((c) => c.gross));

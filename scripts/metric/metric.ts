@@ -6,7 +6,8 @@
  * the seller count, refunds do not, gross volume leaves the escrow; the floor
  * (PASS/FAIL) is EUR 4,000 / 20 escrows / 12 buyer wallets / 4 sellers, the
  * target EUR 7,000 / 35 / 20 / 6 is reported, not a condition; silent-buyer
- * resolutions at most half of the counted escrows.
+ * resolutions at most two thirds of the counted escrows (counted silent <=
+ * 2 x counted buyer-approved).
  *
  * This module adds what a public re-computation from chain data needs on top:
  * - footprint checks the reconciler does not make: each escrow must use the

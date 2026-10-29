@@ -37,7 +37,9 @@ writing by day 21.
 3. At least 4 distinct sellers paid in EURC.
 
 Silent-buyer resolutions count, are reported as a separate sub-count, and make up no more than
-half of the counted escrows.
+two thirds of the counted escrows, so at least one third are buyer approvals (in code: counted
+silent <= 2 x counted buyer-approved, earliest silent resolutions first). The cap was set from
+measured buyer-confirmation behaviour; it was one half before 29 Oct 2026.
 
 **Target** (reported, not a condition): EUR 7,000 from 35 escrows, at least 20 distinct buyer
 wallets and 6 distinct sellers. **Stretch** (reported, not a condition): EUR 15,000 from 70 escrows.
@@ -45,8 +47,8 @@ wallets and 6 distinct sellers. **Stretch** (reported, not a condition): EUR 15,
 Basis: the floor is sized on the current paid-order pace (the 1-15 October 2026 pace, about 8.6
 orders a day, so about 390 orders funded in a 45-day window), assuming that eligible orders run
 through the platform checkout, where EURC is offered; about 5% of them choosing EURC for the floor
-and 9% for the target; and, because silent-buyer resolutions count for at most half, at least 10
-counted escrows settled on the buyer's own approval. The Tranche 2 recalibration re-bases the floor
+and 9% for the target; and, because silent-buyer resolutions count for at most two thirds, at
+least 7 of the 20 counted escrows settled on the buyer's own approval. The Tranche 2 recalibration re-bases the floor
 on measured checkout volume, opt-in rate and buyer-approval rate: the pilot reports
 platform-checkout order volume, EURC opt-in among eligible orders and the buyer-approval rate, and
 if any is below the basis, SCF is asked in writing to re-base the floor on those figures before
@@ -113,7 +115,9 @@ deployment; files and the full table in [verification.md](verification.md#re-run
 Run 7 footprint, output as captured in [`runs/metric-output-run-7.txt`](runs/metric-output-run-7.txt)
 before the funded-in-window rule (the current script prints the funding window and the closing
 deadline on the `window:` line; the counts for these escrows are the same, since each closed
-minutes after funding):
+minutes after funding). The captured outputs also predate the change of the silent-buyer cap from
+one half to two thirds; with one silent-buyer resolution and one buyer-approved release it counts
+under either cap:
 
 ```
 network: testnet

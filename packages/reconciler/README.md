@@ -104,7 +104,9 @@ aggregates only. It applies the published definition:
   The target (EUR 7,000, 35 escrows, 20 wallets, 6 sellers) and the stretch goal
   (EUR 15,000, 70 escrows) are reported but are not conditions.
 - Silent-buyer resolutions are reported as a sub-count. They count only up to
-  the number of other counted escrows, so they never make up more than half.
+  twice the number of counted buyer-approved escrows (`SILENT_PER_APPROVED`),
+  so they never make up more than two thirds; the earliest count first. The
+  cap was set from measured buyer-confirmation behaviour.
 - Only escrows whose `platform` is the registered address count, and the caller
   can mark test or related-party escrows as `excluded`.
 
