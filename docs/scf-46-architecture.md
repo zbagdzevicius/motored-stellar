@@ -1,14 +1,67 @@
 # Motored EURC escrow on Stellar: technical architecture
 
-_Architecture for the SCF #46 Integration Track submission; testnet only, unaudited; last updated 29 Oct 2026._
-
-SCF #46 Build Award, Integration Track. UAB Motored, Vilnius. Security reports: security@motored.lt (see [SECURITY.md](../SECURITY.md)).
+_SCF #46 Build Award, Integration Track. UAB Motored, Vilnius. Testnet only, unaudited; last updated 29 Oct 2026. Security reports: security@motored.lt (see [SECURITY.md](../SECURITY.md))._
 
 Motored: AI that finds, prices, verifies and delivers every used car part.
 
-> Companion to Motored's SCF #46 Integration Track submission (the Architecture link). Deliverable IDs (D1-D13, U1-U5), hours and dollar figures match the submission exactly. GitHub renders the Mermaid diagram in section 4.
+> Companion to Motored's SCF #46 Integration Track submission (the Architecture link). Deliverable IDs (D1-D13, U1-U5), hours and dollar figures match the submission exactly. GitHub renders the Mermaid diagrams in sections 3 and 4.
 
-This document describes a second payment rail for Motored. The buyer pays in Circle EURC on Stellar. The money sits in a non-custodial Trustless Work escrow until the buyer confirms receipt or, if the buyer stays silent, until 7 days after a recorded DPD delivery. The document keeps what runs today separate from what we will build. Every protocol claim was checked on 23-24 Oct 2026 against the Trustless Work v1 source code (branch `single-release-main`, commit `6e4d40e`), against the escrow Wasm files Trustless Work has actually deployed (testnet `7c3f7b2a...`, mainnet `96d51751...`), against live Horizon and live docs, and by running our guard contract against those deployed Wasm files, locally and on testnet. Items that still need a partner's written answer are listed in section 11, each with a fallback.
+## Summary for reviewers
+
+**What this is.** A second payment rail for Motored, a live used car parts marketplace. The buyer pays in Circle EURC on Stellar into one non-custodial Trustless Work escrow per order. The seller is paid when the buyer confirms receipt or, if the buyer stays silent, 7 days after a recorded DPD delivery. Cards stay on every order, so no order depends on EURC.
+
+**Why Stellar.** Every block we need already runs on Stellar:
+
+- **Circle EURC** (an e-money token under MiCA).
+- **Four partners from the SCF Integration List:** Trustless Work escrow, Privy and Stellar Wallets Kit wallets, and Bridge for SEPA in and out.
+- **No XLM for users:** Motored sponsors accounts and fees. Testnet network fees: about 0.035 XLM per order in run 4, and about 0.07 XLM in run 7, whose total includes 60 days of the guard's registration rent; the highest we observed was about 2.4 XLM in lab run 1 ([appendix A](#appendix-a-additional-project-information)).
+- **Seller paid at once:** in the release transaction itself, instead of waiting for a card payout schedule (3 business days by default in Lithuania).
+- **Checkable:** the escrow's amount and roles are locked once funded, and anyone can inspect it on-chain.
+
+**What is already proven (pre-award, not billed).** Run 9 (29 Oct 2026) deployed our guard contract v0.10 on Circle's testnet EURC and landed: a buyer-approved release; the seller paid alone through `withdraw_remaining_funds` past a buyer with no trustline; and an over-cap fee registration as a failed transaction (`PlatformFeeOverCap`). Runs 4 to 8 landed releases, refunds, silent-buyer payouts, buyer contests and four refused payouts as failed transactions. 99 Rust unit tests run against Trustless Work's deployed Wasm files; the first public CI run was green. Details: [Read this first](#read-this-first-one-page) and [section 1](#1-status-at-a-glance).
+
+**The ask.** USD 61,600 in three tranches over 22 build weeks: 96 engineering dev-days (USD 53,760) plus the user-testing allowance (196 h, USD 7,840).
+
+| Tranche | What ships | USD | SCF payments |
+|---|---|---|---|
+| T1 (wk 1-6) | Testnet MVP: Trustless Work API, wallets and sponsorship, orders on escrow, EURC checkout (D1-D4) | 18,480 | #0 6,160 + #1 12,320 |
+| T2 (wk 7-12) | Bridge ramp, guard hardening, threat model and 14 alerts, testnet hardening, user tests (D5-D8, U1-U2) | 18,480 | #2 18,480 |
+| T3 (wk 13-22) | Mainnet cutover, seller EURC payouts, live rollout, open-source release (D10-D13, U3-U5) | 24,640 | #3 24,640, paid on the on-chain metric |
+
+**Tranche 3 metric.** Committed floor (triggers payment #3): at least EUR 4,000 released from at least 20 escrows, 12 distinct buyer wallets and 4 sellers paid in EURC, with silent-buyer resolutions at most two thirds. Counted escrows are funded in a 45-day window and closed within 14 days after it; the metric closes by week 26. Target (not a condition): EUR 7,000 from 35 escrows, 20 wallets and 6 sellers. Detail: [section 10](#10-build-plan-and-effort-matches-the-submission-budget).
+
+**Key risks and the gate for each.**
+
+| Risk | Gate or fallback |
+|---|---|
+| Legal: MiCA and PSD2 may apply to the roles Motored holds | No mainnet EURC order before a written Lithuanian legal opinion on every role (G1, [section 6](#6-keys-and-custody)), or those roles move to a licensed party |
+| Trustless Work's mainnet fee account holds no EURC trustline today, so every mainnet EURC exit would revert | No mainnet EURC escrow until Horizon shows an authorised EURC trustline and the mainnet Wasm hash is confirmed; if not in place by week 16, we notify SCF and agree a revised window in writing ([section 8](#8-failure-modes)) |
+| The guard is unaudited | EUR 1,000 per-order and EUR 5,000 open-value caps until an external review (SCF Audit Bank); an offline break-glass key can only refund the buyer |
+| The v1 API may not take a contract address in both escrow roles | Deploy Trustless Work's same Wasm through its on-chain deployer, already proven on testnet; on mainnet only with Trustless Work's written consent ([section 11](#11-open-partner-confirmations-dated)) |
+| Bridge EUR/SEPA on Stellar not live for us | If not live by week 12, we propose pro-rated Tranche 3 thresholds for the wallet-only path at the Tranche 2 review |
+| Low EURC uptake | Cards stay; the metric is sized on a minority opt-in, measured in the D8/U1 pilot and re-based only with SCF's written agreement |
+
+Mainnet also waits for updated terms published at least 15 days earlier.
+
+**Terms used.** *Escrow*: a Trustless Work contract, one per order, that holds the EURC. *Guard*: our contract that holds the escrow's release and dispute-resolver roles and limits who can be paid. *Claim registry*: our contract that stores write-once Merkle roots of DPD delivery events, with the time each was anchored. *Silent buyer*: a buyer who never confirms receipt. *Contest*: a buyer-signed call that blocks the one seller payout path that needs no delivery claim. *Break-glass*: an offline key that can only refund the buyer. *bps*: basis points (100 bps = 1%). *TTL*: how long a contract's storage stays live before it must be extended. *Trustline*: a Stellar account's opt-in to hold an asset such as EURC.
+
+## Contents
+
+- [Summary for reviewers](#summary-for-reviewers)
+- [Read this first (one page)](#read-this-first-one-page)
+- [About this document](#about-this-document)
+- [1. Status at a glance](#1-status-at-a-glance)
+- [2. Components](#2-components)
+- [3. Roles per escrow](#3-roles-per-escrow)
+- [4. Sequence](#4-sequence)
+- [5. Contract interfaces](#5-contract-interfaces)
+- [6. Keys and custody](#6-keys-and-custody)
+- [7. Money and ledger](#7-money-and-ledger)
+- [8. Failure modes](#8-failure-modes)
+- [9. Security, testing and audit plan](#9-security-testing-and-audit-plan)
+- [10. Build plan and effort (matches the submission budget)](#10-build-plan-and-effort-matches-the-submission-budget)
+- [11. Open partner confirmations (dated)](#11-open-partner-confirmations-dated)
+- [Appendix A. Additional project information](#appendix-a-additional-project-information)
 
 ## Read this first (one page)
 
@@ -27,13 +80,34 @@ Seller (EURC, or bank via Bridge) + Motored platform fee + Trustless Work 0.3%
 Claim registry (write-once roots, anchor time, offline revoker)
 ```
 
-**Three guard rules.** (1) A release needs the buyer's on-chain approval (checked by Trustless Work) plus Motored's release key (checked by the guard). (2) A resolution can pay only that escrow's buyer or seller, never a third address and never the seller more than the escrow amount. (3) A seller payout without the buyer's approval needs a delivery claim anchored after full funding and at least 7 days earlier, or the buyer's approval on record plus 7 days without a buyer contest; an offline break-glass key can only refund the buyer.
+**Three guard rules.**
 
-**Proven on testnet (pre-award, not billed; pre-award means the repository at tag `pre-award-filing`, the filing-day commit).** Run 4 of 28 Oct 2026, from this repository's own scripts: the guard in both roles on escrows running Trustless Work's testnet Wasm (`7c3f7b2a...`), a buyer-approved release (its delivery claim re-checked publicly afterwards, off-chain, with `npm run claims:recheck`), a dispute refund with the fee top-up and a break-glass refund, all landed; run 5 the same day added a silent-buyer seller payout against an anchored delivery claim and a buyer contest followed by a refund (section 1). Run 6 (29 Oct 2026) landed four refused payouts as failed transactions carrying the guard's error codes (`BadFeeAddr`, `NoClaim`, `NotWholeToBuyer`, `Contested`); the other refused paths are still unit tests and enforce-mode simulations, and D6 lands six more. Run 7 on 29 Oct 2026 deployed guard v0.9, which renews its own storage lifetime (TTL), re-ran the release, refund, silent-buyer and contest scenarios on it, and read the 60-day TTLs back from the ledger. Guard v0.10 (29 Oct 2026) adds a seller dispute payout that no buyer leg can block, a cap on the escrow's platform fee rate (set per deploy (500 bps in run 9; 1,000 bps planned for mainnet; shipping is paid to the platform address in the funding step, outside the escrow; an order whose quote is above the cap stays on the card rail)) and TTL values sized for mainnet (sections 5 and 8). In runs 4 to 7 a lab asset stood in for EURC; run 8 (29 Oct 2026) re-ran every scenario and landed the four refusals again on Circle's testnet EURC; run 9 (29 Oct 2026) deployed guard v0.10 on Circle's testnet EURC and landed a buyer-approved release, the seller paid alone through `withdraw_remaining_funds` past a buyer with no trustline, and an over-cap registration as a failed transaction (`PlatformFeeOverCap`).
+1. A release needs the buyer's on-chain approval (checked by Trustless Work) plus Motored's release key (checked by the guard).
+2. A resolution can pay only that escrow's buyer or seller, never a third address and never the seller more than the escrow amount.
+3. A seller payout without the buyer's approval needs a delivery claim anchored after full funding and at least 7 days earlier, or the buyer's approval on record plus 7 days without a buyer contest; an offline break-glass key can only refund the buyer.
 
-**Gates before mainnet EURC orders.** A written Lithuanian legal opinion on every role Motored holds (G1, section 6); an authorised EURC trustline on Trustless Work's mainnet fee account and a confirmed mainnet Wasm hash (sections 8 and 11); updated terms published at least 15 days earlier; EUR 1,000 per-order and EUR 5,000 open-value caps until an external review.
+**Proven on testnet (pre-award, not billed).** Pre-award means the repository at tag `pre-award-filing`, the filing-day commit. Hashes for every run are in section 1.
 
-**Where things are.** Components: section 2. Contract interfaces: section 5. Keys: section 6. Failure modes: section 8. Budget by deliverable: section 10. Open partner questions: section 11. Refused-path, alert and failure-state lists: appendix A.
+| Run | Date | Asset | What landed |
+|---|---|---|---|
+| 4 | 28 Oct 2026 | Lab asset standing in for EURC | From this repository's own scripts: the guard in both roles on escrows running Trustless Work's testnet Wasm (`7c3f7b2a...`); a buyer-approved release (its delivery claim re-checked publicly afterwards, off-chain, with `npm run claims:recheck`); a dispute refund with the fee top-up; a break-glass refund |
+| 5 | 28 Oct 2026 | Lab asset | A silent-buyer seller payout against an anchored delivery claim; a buyer contest followed by a refund |
+| 6 | 29 Oct 2026 | Lab asset | Four refused payouts as failed transactions carrying the guard's error codes (#15 `BadFeeAddr`, #8 `NoClaim`, #13 `NotWholeToBuyer`, #25 `Contested`). The other refused paths are still unit tests and enforce-mode simulations, and D6 lands six more |
+| 7 | 29 Oct 2026 | Lab asset | Guard v0.9, which renews its own storage lifetime (TTL): the release, refund, silent-buyer and contest scenarios re-run on it, and the 60-day TTLs read back from the ledger |
+| 8 | 29 Oct 2026 | Circle's testnet EURC | Every scenario re-run, and the four refusals landed again |
+| 9 | 29 Oct 2026 | Circle's testnet EURC | Guard v0.10: a buyer-approved release; the seller paid alone through `withdraw_remaining_funds` past a buyer with no trustline; an over-cap registration as a failed transaction (`PlatformFeeOverCap`) |
+
+Guard v0.10 (29 Oct 2026) adds three things (sections 5 and 8):
+
+- a seller dispute payout that no buyer leg can block;
+- TTL values sized for mainnet;
+- a cap on the escrow's platform fee rate, set per deploy: 500 bps in run 9, 1,000 bps planned for mainnet. Shipping is paid to the platform address in the funding step, outside the escrow. An order whose quote is above the cap stays on the card rail.
+
+In runs 4 to 7 a lab asset stood in for EURC.
+
+**Gates before mainnet EURC orders:** every gate is in the risk table of the [Summary for reviewers](#summary-for-reviewers) (legal opinion G1, section 6; the fee account's EURC trustline and the mainnet Wasm hash, sections 8 and 11; terms published 15 days earlier; the per-order and open-value caps).
+
+**Where things are.** (Full list: [Contents](#contents).) Components: section 2. Contract interfaces: section 5. Keys: section 6. Failure modes: section 8. Budget by deliverable: section 10. Open partner questions: section 11. Refused-path, alert and failure-state lists: appendix A.
 
 | The submission cites | Where it is |
 |---|---|
@@ -41,9 +115,20 @@ Claim registry (write-once roots, anchor time, offline revoker)
 | 7 testnet failure states (D8) | [appendix A, D8](#d8-failure-states) |
 | 7 mainnet failure states (D12) | [appendix A, D12](#d12-failure-states) |
 | Refused paths (D6) | [appendix A, D6](#d6-refused-paths) |
-| Metric window and pro-rating rule | [section 10, first paragraph](#10-build-plan-and-effort-matches-the-submission-budget) |
+| Metric window and pro-rating rule | [section 10, opening list](#10-build-plan-and-effort-matches-the-submission-budget) |
 | Partner questions and fallbacks | [section 11](#11-open-partner-confirmations-dated) |
 | Network cost per order | [testnet-proofs.md, Network cost of one order](testnet-proofs.md#network-cost-of-one-order-escrow-a-run-4) |
+
+## About this document
+
+- **Scope.** A second payment rail for Motored. The buyer pays in Circle EURC on Stellar. The money sits in a non-custodial Trustless Work escrow until the buyer confirms receipt or, if the buyer stays silent, until 7 days after a recorded DPD delivery.
+- **Today versus to build.** The document keeps what runs today separate from what we will build.
+- **How claims were checked.** Every protocol claim was checked on 23-24 Oct 2026:
+  - against the Trustless Work v1 source code (branch `single-release-main`, commit `6e4d40e`);
+  - against the escrow Wasm files Trustless Work has actually deployed (testnet `7c3f7b2a...`, mainnet `96d51751...`);
+  - against live Horizon and live docs;
+  - and by running our guard contract against those deployed Wasm files, locally and on testnet.
+- **Open items.** Items that still need a partner's written answer are listed in section 11, each with a fallback.
 
 ## 1. Status at a glance
 
@@ -54,7 +139,7 @@ Claim registry (write-once roots, anchor time, offline revoker)
 | DPD labels, authenticated tracking poll every 20 minutes (DPD push callbacks only trigger a re-check), delivery transition | Live | Private marketplace repo |
 | Disputes (full refund or full release) | Live | Private marketplace repo |
 | Fee model (5% buyer fee capped at EUR 5; 5% seller commission) | Live | Private marketplace repo; mirrored for escrows in [`packages/escrow/src/fees.ts`](../packages/escrow/src/fees.ts) (public) |
-| Guard contract v0.10 (v0.9's rules plus a seller dispute payout through `withdraw_remaining_funds` that no buyer leg can block, a cap on the escrow's platform fee rate (`max_platform_fee_bps`, set per deploy (500 bps in run 9; 1,000 bps planned for mainnet; shipping is paid to the platform address in the funding step, outside the escrow; an order whose quote is above the cap stays on the card rail)) and mainnet-sized TTL values; v0.9 is v0.8 plus in-contract TTL upkeep; release, resolver and refund-only branches; `check_escrow`, `register_escrow`, `contest`; timelocked rotation of the release, resolver and break-glass keys by the offline guard admin; an immediate resolver-key swap by the resolver admin for compromise response) | Pre-award, not billed. Three lab runs on testnet on 24 Oct 2026, and run 4 from the public repo's own scripts on 28 Oct 2026; run 6 on 29 Oct 2026 landed four refused payouts as failed txs; the other refused paths are shown by enforce-mode simulation; run 7 on 29 Oct 2026 deployed v0.9 and ran the release, refund, silent-buyer and contest paths on it; run 8 on 29 Oct 2026 re-ran them and the four landed refusals on a fresh v0.9 in Circle's testnet EURC; v0.10 (29 Oct 2026) is unit-tested in the repo on both Trustless Work Wasm files, and run 9 on 29 Oct 2026 deployed it in Circle's testnet EURC and landed a buyer-approved release, the seller-only `withdraw_remaining_funds` payout and the over-cap registration refusal as a failed tx. D6 bills only the six remaining refused paths and production hardening | [`contracts/guard`](../contracts/guard); run 4 guard `CBYWR2P3PEJS2IYIHVVQ2OHXM2ZHGKZDVVDIWI3JCUW7YE4VXNY467EX`; run 7 guard v0.9 `CBNODLOP53AMF2MTXUM4V36SWTFLZE4APWWXNMTZAI7XGRIJOQUAJKX6`; run 8 guard v0.9 (EURC) `CAYLUEO3PVSCBL4PPLIZV3QLRQ47HRONNUQ2M2PAZQSP5PRZRNRRXNQC`; run 9 guard v0.10 (EURC) `CCRZHNU2CHN62BXALEFHAJEX57AURBB7OWYM37I7JSO7HLALHVJ2KVUZ` |
+| Guard contract v0.10: v0.9's rules plus a seller dispute payout through `withdraw_remaining_funds` that no buyer leg can block, a platform fee rate cap (`max_platform_fee_bps`, set per deploy: 500 bps in run 9, 1,000 bps planned for mainnet; shipping outside the escrow, see Read this first) and mainnet-sized TTL values. v0.9 is v0.8 plus in-contract TTL upkeep. Release, resolver and refund-only branches; `check_escrow`, `register_escrow`, `contest`; timelocked rotation of the release, resolver and break-glass keys by the offline guard admin; an immediate resolver-key swap by the resolver admin for compromise response | Pre-award, not billed. Three lab runs on 24 Oct 2026, then runs 4 to 9 on 28-29 Oct 2026 (table in [Read this first](#read-this-first-one-page); run 8 on a fresh v0.9, run 9 on v0.10, both in Circle's testnet EURC). v0.10 is unit-tested on both Trustless Work Wasm files. Refused paths not yet landed on-chain are shown by enforce-mode simulation. D6 bills only the six remaining refused paths and production hardening | [`contracts/guard`](../contracts/guard); run 4 guard `CBYWR2P3PEJS2IYIHVVQ2OHXM2ZHGKZDVVDIWI3JCUW7YE4VXNY467EX`; run 7 guard v0.9 `CBNODLOP53AMF2MTXUM4V36SWTFLZE4APWWXNMTZAI7XGRIJOQUAJKX6`; run 8 guard v0.9 (EURC) `CAYLUEO3PVSCBL4PPLIZV3QLRQ47HRONNUQ2M2PAZQSP5PRZRNRRXNQC`; run 9 guard v0.10 (EURC) `CCRZHNU2CHN62BXALEFHAJEX57AURBB7OWYM37I7JSO7HLALHVJ2KVUZ` |
 | Claim registry (write-once roots, `anchored_at`, `revoke`; separate issuer and offline revoker keys) | Pre-award, not billed. Ran in the lab runs and in run 4. D6 adds the `Anchored` event and verified Wasm | [`contracts/claim-registry`](../contracts/claim-registry); run 4 registry `CD27AQMH2QGS2IRJA26LKNRH6ZQFZZ7EI4QWC5PIRVRJQ4KSTY3EYHPZ` |
 | TypeScript packages: `escrow` (v1 REST client, on-chain deployer path, precheck, event reader, release service, fee rules), `claims`, `eurc`, `wallets`, `ramps`, `reconciler`; testnet scripts | Pre-award, not billed. Unit tests (a seeded randomized property test on the fee rules among them); the testnet scripts ran in run 4. Live runs against the v1 REST API, Circle testnet EURC, Privy, Stellar Wallets Kit and the Bridge sandbox are billed (D1, D2, D5) | [`packages/`](../packages), [`scripts/`](../scripts) |
 | Motored-side wiring: orders, escrow ledger, reconciliation, payouts, disputes, checkout (escrow emails, the admin console, invoices, DAC7 records and the Polish locale are funded by Motored, not billed) | To build (this award: D3, D4, D7, D8, D11, D12) | Private marketplace repo; its Stellar-facing part (the escrow order-state machine of D3/D4 and the reconciliation adapters of D7) ships as Apache-2.0 packages in the public repo during Tranches 1-2; checked through the public artefacts below |
@@ -62,17 +147,68 @@ Claim registry (write-once roots, anchor time, offline revoker)
 
 The Motored marketplace repo is private; every Stellar component is in this public Apache-2.0 repository, with CI (section 9). Each private deliverable is checked through a public artefact that fails if the private wiring is wrong: the order system imports the fee, cap, rounding, reconciliation and refund rules from [`packages/escrow`](../packages/escrow) and [`packages/reconciler`](../packages/reconciler) by version, so their public CI tests are the tests of that wiring, and every testnet and mainnet tx hash a deliverable produces is listed against its order reference in [testnet-proofs.md](testnet-proofs.md). Read-only access to the escrow-related private modules is a standing offer to the tranche reviewer.
 
-Run 4, 28 Oct 2026 (testnet, from the repo's own scripts; an XEUR lab asset stood in for EURC; escrows ran Trustless Work's testnet Wasm `7c3f7b2a...`, created by an escrow-factory instance we deployed from that Wasm, calling its built-in deployer function; reproducible with `npm run testnet:keys`, `testnet:deploy` and `testnet:e2e`, and re-run and re-logged after any testnet reset): guard `CBYWR2P3...Y467EX`, registry `CD27AQMH...3EYHPZ`; release after buyer approval (its claim re-checked off-chain afterwards with `npm run claims:recheck`) `a018c1eb444a28b2957234f7c33235e253f1f86fe61a865e320ca33096ecdbc0`; dispute refund to the buyer `577805f66de433dcfefc3a4b083d06d9fa49dc84296a9e795814520253968618` plus the fee top-up `35b95eb62d3eb6c6384bda0a8179065026cce6c5aca090f028ca12fe93d4ee80`; partial-funding break-glass refund `f35afeec6ecd45317c258127b13a3c28998662e05b5cf6f0fd2ee855043685ae`. Refused paths in this run were simulations, not landed transactions (run 6 later landed four of them). Every link is in [testnet-proofs.md, Run 4](testnet-proofs.md#run-4-guard-v08-from-this-repositorys-scripts-28-oct-2026-0937-to-0939-utc).
+### Run log with transaction hashes
 
-Run 5, 28 Oct 2026, 22:08-22:11 UTC (testnet, `npm run testnet:e2e-claims` on the run 4 guard and registry; XEUR stood in for EURC; windows 120 s instead of 7 days; the delivered event came from a mock oracle, not a carrier): silent-buyer escrow D `CDLO52RB...SMH2E`, claim anchored with a 32-level proof `840d9fb4d6c96cc43c7be4966ab937a2f5123c085428a1959c7a322a704bd52e`, seller payout after the delay with the proof checked in the guard's `__check_auth` (4,955,849 instructions in simulation; seller 95 of 100) `6cc1b9f648b57bed8c7944c6f18283a39ccdb95b516ad095f3370d9ec52541d0`; contest escrow E `CCOCR767...ZKKF6`, buyer contest `ed5a7e8dc83ccf6488eee929ede31275bb8dbbcfa1bdde502671a5561b27d7d3`, whole-balance refund to the buyer `224ab6396e6a07150477aa622d0909b1070bfae9707eeb424c5a2db0529cbd15` and the fee top-up `9c014de424b2a69f23a23239c693853264ce716f3c3b96464a395c4ae28686cb`. Refusals in run 5 (no claim, too early, tampered claim, seller payout after a contest) were simulations. Full table in [testnet-proofs.md, Run 5](testnet-proofs.md#run-5-silent-buyer-and-buyer-contest-from-this-repositorys-scripts-28-oct-2026-2208-to-2211-utc).
+One entry per run, newest last. Skip to section 2 if you only need the design.
 
-Run 6, 29 Oct 2026, 07:02-07:05 UTC (testnet, `npm run testnet:refusals` on the run 4 guard; XEUR stood in for EURC): four refused payouts landed on the ledger as FAILED transactions carrying the guard's own error code, each followed by the legitimate settlement of the same escrow: a release with a wrong Trustless Work fee address, `Error(Contract, #15)` `BadFeeAddr` `92a1b01c245703781078d17ece3768ab5913f383099954077ae18d5021a3a598`; a resolver payout to the seller with no delivery claim, `#8` `NoClaim` `e592b600ab8fd2e05269c0eedc848b7490ac35ae80591944a71fd90f5422a651`; a break-glass payout to the seller, `#13` `NotWholeToBuyer` `e2067727b0741da618e6f3f3a7775104361efa676947bf9efc61f837e2a79032`; a seller payout while the buyer's contest stands, `#25` `Contested` `f75e150320940a6c55718202ade29a18047feece3cd1b1d8895a80c86312c2c1`. Public RPC `getTransaction` returns FAILED for each, and stellar.expert shows `txFailed` with the guard's error in the diagnostic events. The other refused paths (release before buyer approval, release signed with the resolver key, `TooEarly`, a tampered claim) remain unit tests plus enforce-mode simulations; D6 lands the six remaining paths it names. Full table in [testnet-proofs.md, Run 6](testnet-proofs.md#run-6-refusals-landed-as-failed-transactions-29-oct-2026-0702-to-0705-utc).
+**Run 4, 28 Oct 2026** (testnet, from the repo's own scripts; an XEUR lab asset stood in for EURC; escrows ran Trustless Work's testnet Wasm `7c3f7b2a...`, created by an escrow-factory instance we deployed from that Wasm, calling its built-in deployer function; reproducible with `npm run testnet:keys`, `testnet:deploy` and `testnet:e2e`, and re-run and re-logged after any testnet reset):
+- guard `CBYWR2P3...Y467EX`, registry `CD27AQMH...3EYHPZ`;
+- release after buyer approval (its claim re-checked off-chain afterwards with `npm run claims:recheck`) `a018c1eb444a28b2957234f7c33235e253f1f86fe61a865e320ca33096ecdbc0`;
+- dispute refund to the buyer `577805f66de433dcfefc3a4b083d06d9fa49dc84296a9e795814520253968618` plus the fee top-up `35b95eb62d3eb6c6384bda0a8179065026cce6c5aca090f028ca12fe93d4ee80`;
+- partial-funding break-glass refund `f35afeec6ecd45317c258127b13a3c28998662e05b5cf6f0fd2ee855043685ae`.
+- Refused paths in this run were simulations, not landed transactions (run 6 later landed four of them).
+- Every link is in [testnet-proofs.md, Run 4](testnet-proofs.md#run-4-guard-v08-from-this-repositorys-scripts-28-oct-2026-0937-to-0939-utc).
 
-Run 7, 29 Oct 2026, 09:27-09:35 UTC (testnet, `npm run testnet:deploy`, `testnet:e2e` and `testnet:e2e-claims`; XEUR stood in for EURC): a fresh deployment of guard v0.9 `CBNODLOP53AMF2MTXUM4V36SWTFLZE4APWWXNMTZAI7XGRIJOQUAJKX6` (Wasm sha256 `f53d1ece92fcc29f822aac45a720f4b112a0cdd637e22bf3185cc1ae23c4d0d1`, 22,541 bytes), v0.8's rules plus in-contract TTL upkeep: `register_escrow`, `contest` and `__check_auth` extend the registration they read, the instance and the code to 1,036,800 ledgers (about 60 days) once 518,400 (about 30 days) or fewer remain; the views `check_escrow` and `registration` do not extend, and a refused authorisation rolls the extension back. Scenarios A to E all passed: release `a851cf7e3908a3c876df72104baaec4d8499b23196d70f05b109d38c12a510a7`; silent-buyer payout against a depth-32 claim `0c8780dc75d6ed0632155a0a88af09b8cfc6219e78ecd6a7d596641bb52706a4`; buyer contest `2974e98d4d64069ea96ff8bfb550c1f1187c4c3154be29db20d60b4f9223504b` then refund `e942b01cdb1757c2cf09985ede9d17f321e64ed2ec7d8b9d456c023b83469f8b`. TTLs read back from the ledger: the v0.9 instance and every registration of A to E at about 1,036,700 ledgers left (escrow A's set to exactly 1,036,800), against the v0.8 run 4 guard's network-minimum 120,960 from creation (103,708 left). The upkeep costs rent: escrow A totals 685,147 stroops against 346,497 in run 4 (first `register_escrow` 383,152 against 50,416), and the guard deployment 106,688,213 stroops (about 10.7 XLM) against 89,960. These are testnet figures: mainnet's minimum persistent TTL is 2,073,600 ledgers (about 120 days) against testnet's 120,960, so on mainnet every new entry already starts with about 120 days of rent, paid when it is created, and v0.9's 30/60-day values would do nothing for an entry's first 90 days. Guard v0.10 (in the repo; deployed in run 9) therefore extends to 2,592,000 ledgers (150 days) once 2,073,600 (120 days) or fewer remain, and the claim registry uses the same values, so the first touch extends at once on either network; mainnet rent per order is measured in D10. Testnet RPC now returns the guard's auth entry as `sorobanCredentialsAddressV2` (CAP-71); the scripts sign either variant. A first attempt left escrow A0 funded and approved but never settled; it is logged. Full table in [testnet-proofs.md, Run 7](testnet-proofs.md#run-7-guard-v09-with-ttl-upkeep-29-oct-2026-0927-to-0935-utc).
+**Run 5, 28 Oct 2026, 22:08-22:11 UTC** (testnet, `npm run testnet:e2e-claims` on the run 4 guard and registry; XEUR stood in for EURC; windows 120 s instead of 7 days; the delivered event came from a mock oracle, not a carrier):
+- silent-buyer escrow D `CDLO52RB...SMH2E`, claim anchored with a 32-level proof `840d9fb4d6c96cc43c7be4966ab937a2f5123c085428a1959c7a322a704bd52e`, seller payout after the delay with the proof checked in the guard's `__check_auth` (4,955,849 instructions in simulation; seller 95 of 100) `6cc1b9f648b57bed8c7944c6f18283a39ccdb95b516ad095f3370d9ec52541d0`;
+- contest escrow E `CCOCR767...ZKKF6`, buyer contest `ed5a7e8dc83ccf6488eee929ede31275bb8dbbcfa1bdde502671a5561b27d7d3`, whole-balance refund to the buyer `224ab6396e6a07150477aa622d0909b1070bfae9707eeb424c5a2db0529cbd15` and the fee top-up `9c014de424b2a69f23a23239c693853264ce716f3c3b96464a395c4ae28686cb`.
+- Refusals in run 5 (no claim, too early, tampered claim, seller payout after a contest) were simulations.
+- Full table in [testnet-proofs.md, Run 5](testnet-proofs.md#run-5-silent-buyer-and-buyer-contest-from-this-repositorys-scripts-28-oct-2026-2208-to-2211-utc).
 
-Run 8, 29 Oct 2026, 11:56-12:05 UTC (testnet, `npm run testnet:deploy -- --asset EURC:GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO --amount 2`, then `testnet:e2e`, `testnet:e2e-claims` and `testnet:refusals`): the first run on Circle's testnet EURC (issuer `GB3Q6QDZ...3NM2ZTVO` as published at developers.circle.com, SAC `CCUUDM434BMZMYWYDITHFXHDMIVTGGD6T2I5UKNX5BSLXLW7HVR4MCGZ`), no stand-in asset. A fresh deployment of guard v0.9 `CAYLUEO3PVSCBL4PPLIZV3QLRQ47HRONNUQ2M2PAZQSP5PRZRNRRXNQC` (uploaded Wasm `c3fe2055...`) and registry `CCLXA67OTSYDVGMKZI54S4YJE7JWS6UUEZCEM4JY4VEAS3SK5FZ7YC67`; 2 EURC orders. Release `3466197bcabc189580f3fd56eedb141f6bfac3dde177d814833a03fe9a0b8efc` (seller received 1.9 EURC); silent-buyer payout against a depth-32 claim `3cc5632805b02b00e79d16c861d8dd3886aa5956ca3adb56afcb5240cc324326`; buyer contest `b40383b5db3f8f25c58c7c86ea9c69246424684aa1a0b5f2d8d0d4ae86847954` then refund `639c61719f35d2152abee74524d784e28028e936dce0b9d39ba2866b0269930a` and fee top-up `63d22b6b53117a8a3ad78aa596311f8e34a824f625892682d17184baeb0be8b3`. Four refusals landed as FAILED transactions in EURC with the guard's codes: `BadFeeAddr` `022d839874bcaa81628a91e9c954c6f9f1aca58fc061f7f35405736d338a8f51`, `NoClaim` `c7a8fa917f052ee9648f312813e0e9ce76d18466778b59782000d12aee1ccfa8`, `NotWholeToBuyer` `a2923c617feaf3a5f163ed4d5c0d2ec714b68889be7ba0e9fcb48971e52d854c`, `Contested` `e949dfc17f20acb9a534e05626b813ca35cc1574295eb0d00b809b98cfb30183`. `npm run claims:recheck -- --from-state` re-checks both anchored claims `ok`. Full table in [testnet-proofs.md, Run 8](testnet-proofs.md#run-8-real-circle-testnet-eurc-guard-v09-29-oct-2026-1156-to-1205-utc).
+**Run 6, 29 Oct 2026, 07:02-07:05 UTC** (testnet, `npm run testnet:refusals` on the run 4 guard; XEUR stood in for EURC):
+- four refused payouts landed on the ledger as FAILED transactions carrying the guard's own error code, each followed by the legitimate settlement of the same escrow: a release with a wrong Trustless Work fee address, `Error(Contract, #15)` `BadFeeAddr` `92a1b01c245703781078d17ece3768ab5913f383099954077ae18d5021a3a598`;
+- a resolver payout to the seller with no delivery claim, `#8` `NoClaim` `e592b600ab8fd2e05269c0eedc848b7490ac35ae80591944a71fd90f5422a651`;
+- a break-glass payout to the seller, `#13` `NotWholeToBuyer` `e2067727b0741da618e6f3f3a7775104361efa676947bf9efc61f837e2a79032`;
+- a seller payout while the buyer's contest stands, `#25` `Contested` `f75e150320940a6c55718202ade29a18047feece3cd1b1d8895a80c86312c2c1`.
+- Public RPC `getTransaction` returns FAILED for each, and stellar.expert shows `txFailed` with the guard's error in the diagnostic events.
+- The other refused paths (release before buyer approval, release signed with the resolver key, `TooEarly`, a tampered claim) remain unit tests plus enforce-mode simulations; D6 lands the six remaining paths it names.
+- Full table in [testnet-proofs.md, Run 6](testnet-proofs.md#run-6-refusals-landed-as-failed-transactions-29-oct-2026-0702-to-0705-utc).
 
-Run 9, 29 Oct 2026, 19:03-19:10 UTC (testnet, `npm run testnet:deploy -- --asset EURC:GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO --amount 2`, then `testnet:e2e` and `testnet:v010`): the first run of guard v0.10. A fresh deployment of guard v0.10 `CCRZHNU2CHN62BXALEFHAJEX57AURBB7OWYM37I7JSO7HLALHVJ2KVUZ` (uploaded Wasm `2a21ef35...`, `max_platform_fee_bps` 500) and registry v0.10 `CC6K26NQGSD3UAIUS463ZJCEC7SGEF6V5R34OYZX3WHY6URFTKQ5FBDX` on Circle's testnet EURC; 2 EURC orders. Buyer-approved release `f2cdbd2c87eb0d525efce66bd73d8e179afbfb50e5ac735a9c33b88a9e355618` (seller received 1.9 EURC). The v0.10 seller-only dispute payout in the case it was written for: a buyer account funded the escrow, then removed its EURC trustline, and 1 unit of dust was sent to the escrow, so every `resolve_dispute` would carry a buyer leg the token refuses; after the claim delay the resolver paid the seller alone through `withdraw_remaining_funds` `2d696d8b8ba704ed3338c1cb061db6ea9519e2829ce2036abd06e3069a3ae972` (seller received 1.9 EURC, the dust stays for the buyer, the registration closed). The platform fee cap as a FAILED transaction: `register_escrow` of an escrow at 501 bps, `Error(Contract, #29)` `PlatformFeeOverCap` `54a5c520f8597780074919bbe09a4d8349ebafc8988f5bca733bd29c8dd65e4c`; an escrow at exactly 500 bps registered `1bd128eb6dea7367d386c31c4bbbddc7a029b2a3b77d8438af0538d853175579`. Full table in [testnet-proofs.md, Run 9](testnet-proofs.md#run-9-guard-v010-on-circle-testnet-eurc-29-oct-2026-1903-to-1910-utc).
+**Run 7, 29 Oct 2026, 09:27-09:35 UTC** (testnet, `npm run testnet:deploy`, `testnet:e2e` and `testnet:e2e-claims`; XEUR stood in for EURC):
+- a fresh deployment of guard v0.9 `CBNODLOP53AMF2MTXUM4V36SWTFLZE4APWWXNMTZAI7XGRIJOQUAJKX6` (Wasm sha256 `f53d1ece92fcc29f822aac45a720f4b112a0cdd637e22bf3185cc1ae23c4d0d1`, 22,541 bytes), v0.8's rules plus in-contract TTL upkeep: `register_escrow`, `contest` and `__check_auth` extend the registration they read, the instance and the code to 1,036,800 ledgers (about 60 days) once 518,400 (about 30 days) or fewer remain;
+- the views `check_escrow` and `registration` do not extend, and a refused authorisation rolls the extension back.
+- Scenarios A to E all passed: release `a851cf7e3908a3c876df72104baaec4d8499b23196d70f05b109d38c12a510a7`;
+- silent-buyer payout against a depth-32 claim `0c8780dc75d6ed0632155a0a88af09b8cfc6219e78ecd6a7d596641bb52706a4`;
+- buyer contest `2974e98d4d64069ea96ff8bfb550c1f1187c4c3154be29db20d60b4f9223504b` then refund `e942b01cdb1757c2cf09985ede9d17f321e64ed2ec7d8b9d456c023b83469f8b`.
+- TTLs read back from the ledger: the v0.9 instance and every registration of A to E at about 1,036,700 ledgers left (escrow A's set to exactly 1,036,800), against the v0.8 run 4 guard's network-minimum 120,960 from creation (103,708 left).
+- The upkeep costs rent: escrow A totals 685,147 stroops against 346,497 in run 4 (first `register_escrow` 383,152 against 50,416), and the guard deployment 106,688,213 stroops (about 10.7 XLM) against 89,960.
+- These are testnet figures: mainnet's minimum persistent TTL is 2,073,600 ledgers (about 120 days) against testnet's 120,960, so on mainnet every new entry already starts with about 120 days of rent, paid when it is created, and v0.9's 30/60-day values would do nothing for an entry's first 90 days.
+- Guard v0.10 (in the repo; deployed in run 9) therefore extends to 2,592,000 ledgers (150 days) once 2,073,600 (120 days) or fewer remain, and the claim registry uses the same values, so the first touch extends at once on either network; mainnet rent per order is measured in D10.
+- Testnet RPC now returns the guard's auth entry as `sorobanCredentialsAddressV2` (CAP-71); the scripts sign either variant.
+- A first attempt left escrow A0 funded and approved but never settled; it is logged.
+- Full table in [testnet-proofs.md, Run 7](testnet-proofs.md#run-7-guard-v09-with-ttl-upkeep-29-oct-2026-0927-to-0935-utc).
+
+**Run 8, 29 Oct 2026, 11:56-12:05 UTC** (testnet, `npm run testnet:deploy -- --asset EURC:GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO --amount 2`, then `testnet:e2e`, `testnet:e2e-claims` and `testnet:refusals`):
+- the first run on Circle's testnet EURC (issuer `GB3Q6QDZ...3NM2ZTVO` as published at developers.circle.com, SAC `CCUUDM434BMZMYWYDITHFXHDMIVTGGD6T2I5UKNX5BSLXLW7HVR4MCGZ`), no stand-in asset.
+- A fresh deployment of guard v0.9 `CAYLUEO3PVSCBL4PPLIZV3QLRQ47HRONNUQ2M2PAZQSP5PRZRNRRXNQC` (uploaded Wasm `c3fe2055...`) and registry `CCLXA67OTSYDVGMKZI54S4YJE7JWS6UUEZCEM4JY4VEAS3SK5FZ7YC67`; 2 EURC orders.
+- Release `3466197bcabc189580f3fd56eedb141f6bfac3dde177d814833a03fe9a0b8efc` (seller received 1.9 EURC);
+- silent-buyer payout against a depth-32 claim `3cc5632805b02b00e79d16c861d8dd3886aa5956ca3adb56afcb5240cc324326`;
+- buyer contest `b40383b5db3f8f25c58c7c86ea9c69246424684aa1a0b5f2d8d0d4ae86847954` then refund `639c61719f35d2152abee74524d784e28028e936dce0b9d39ba2866b0269930a` and fee top-up `63d22b6b53117a8a3ad78aa596311f8e34a824f625892682d17184baeb0be8b3`.
+- Four refusals landed as FAILED transactions in EURC with the guard's codes: `BadFeeAddr` `022d839874bcaa81628a91e9c954c6f9f1aca58fc061f7f35405736d338a8f51`, `NoClaim` `c7a8fa917f052ee9648f312813e0e9ce76d18466778b59782000d12aee1ccfa8`, `NotWholeToBuyer` `a2923c617feaf3a5f163ed4d5c0d2ec714b68889be7ba0e9fcb48971e52d854c`, `Contested` `e949dfc17f20acb9a534e05626b813ca35cc1574295eb0d00b809b98cfb30183`.
+- `npm run claims:recheck -- --from-state` re-checks both anchored claims `ok`.
+- Full table in [testnet-proofs.md, Run 8](testnet-proofs.md#run-8-real-circle-testnet-eurc-guard-v09-29-oct-2026-1156-to-1205-utc).
+
+**Run 9, 29 Oct 2026, 19:03-19:10 UTC** (testnet, `npm run testnet:deploy -- --asset EURC:GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO --amount 2`, then `testnet:e2e` and `testnet:v010`):
+- the first run of guard v0.10.
+- A fresh deployment of guard v0.10 `CCRZHNU2CHN62BXALEFHAJEX57AURBB7OWYM37I7JSO7HLALHVJ2KVUZ` (uploaded Wasm `2a21ef35...`, `max_platform_fee_bps` 500) and registry v0.10 `CC6K26NQGSD3UAIUS463ZJCEC7SGEF6V5R34OYZX3WHY6URFTKQ5FBDX` on Circle's testnet EURC; 2 EURC orders.
+- Buyer-approved release `f2cdbd2c87eb0d525efce66bd73d8e179afbfb50e5ac735a9c33b88a9e355618` (seller received 1.9 EURC).
+- The v0.10 seller-only dispute payout in the case it was written for: a buyer account funded the escrow, then removed its EURC trustline, and 1 unit of dust was sent to the escrow, so every `resolve_dispute` would carry a buyer leg the token refuses;
+- after the claim delay the resolver paid the seller alone through `withdraw_remaining_funds` `2d696d8b8ba704ed3338c1cb061db6ea9519e2829ce2036abd06e3069a3ae972` (seller received 1.9 EURC, the dust stays for the buyer, the registration closed).
+- The platform fee cap as a FAILED transaction: `register_escrow` of an escrow at 501 bps, `Error(Contract, #29)` `PlatformFeeOverCap` `54a5c520f8597780074919bbe09a4d8349ebafc8988f5bca733bd29c8dd65e4c`;
+- an escrow at exactly 500 bps registered `1bd128eb6dea7367d386c31c4bbbddc7a029b2a3b77d8438af0538d853175579`.
+- Full table in [testnet-proofs.md, Run 9](testnet-proofs.md#run-9-guard-v010-on-circle-testnet-eurc-29-oct-2026-1903-to-1910-utc).
+
+### What the testnet proofs show, and what they cannot
 
 **Testnet proofs (pre-award, not billed).** What the lab runs and runs 4 to 9 show, and what they cannot:
 - (a) An escrow running Trustless Work's own testnet Wasm (`7c3f7b2a...`, the hash of escrows the Trustless Work testnet API creates), deployed and initialised in one transaction by an escrow-factory instance that we deployed ourselves from that same Trustless Work Wasm, calling its built-in deployer function (`tw_new_single_release_escrow`; run 4's factory is `CC742MOT...DADWCG`, created by the run's own deployer key in the same run), accepts our guard's contract address as both `release_signer` and `dispute_resolver`, and `release_funds` and `resolve_dispute` succeed through the guard's `__check_auth`.
@@ -82,11 +218,13 @@ Run 9, 29 Oct 2026, 19:03-19:10 UTC (testnet, `npm run testnet:deploy -- --asset
 - The v1 REST API's handling of a contract address in both roles is one of our written questions to Trustless Work (section 11; sent before Tranche 1 at the latest, dated there once sent). The fallback, deploying the same Trustless Work Wasm ourselves through its deployer function as in (a), is already proven on testnet; on mainnet we use it only with Trustless Work's written consent.
 - What Trustless Work's service provides on each path: on the API path its v1 API deploys each escrow; on the fallback path we deploy its Wasm ourselves. Either way every escrow runs Trustless Work's code and pays its 0.3% fee. Release and resolve are built directly against the escrow contract on both paths (section 2, release service), because the guard authorises through a Soroban auth entry checked in its `__check_auth`, which the API's unsigned-XDR flow for G-account signers does not build, so we build and simulate those calls ourselves.
 
-Lab run 1, 24 Oct 2026 (testnet; lab guard `CCPWF7OW3KSTK2MK3HSQLWSTZ4W4K2F2SBJP7X6ZO3QMLQDJ4FA3B2UL`; a lab asset stands in for EURC; the seller-payout delay was 120 s instead of 7 days): deploy and initialise `78fb5abd...` ; fund `c90787bf...` ; register `e4301f3c...` ; buyer approval `c2914766...` ; guarded release `1db53487...` (seller 95.0, platform 4.7, Trustless Work fee 0.3 of 100) ; seller resolution with a depth-32 claim `14121eba...` ; break-glass refund of a 40% funded escrow `825f6986...` ; resolver refund to the buyer `ae7f6756...` (after its batch was revoked: `4aad4baa...`). Refused paths were recorded by enforce-mode simulation with their error codes.
+### Earlier lab runs (24 Oct 2026)
 
-Lab run of guard v0.7, 24 Oct 2026 (testnet; guard `CDKARO3LJKPL7K5BJ6V3SO6OWTVLRQJDVNNIXCJ5BUIPZCPVEOCQ3IWK`, same lab asset, delay and contest window 120 s instead of 7 days): an escrow naming another platform address is refused by the precheck (#22); a third party's 1-unit transfer to an unfunded escrow `9ea846f6...` makes the precheck refuse it (#24) and registers it without marking it funded; the buyer's pre-built funding call still lands `0cc7af15...`; a claim anchored between the dust and the buyer's funding is refused (#16); a dusted escrow is cancelled by a platform dispute `1c565229...`, after which the buyer's pre-built funding call fails; a seller dispute after buyer approval `465baee4...` blocks release, and after the window, uncontested, the seller is paid the same net as the release `31c776b8...`; a buyer contest `82c18aa7...` blocks that path (#25), a contest without the buyer's signature fails (auth error), and the contested escrow is refunded to the buyer `aaaf6aea...`.
+**Lab run 1, 24 Oct 2026** (testnet; lab guard `CCPWF7OW3KSTK2MK3HSQLWSTZ4W4K2F2SBJP7X6ZO3QMLQDJ4FA3B2UL`; a lab asset stands in for EURC; the seller-payout delay was 120 s instead of 7 days): deploy and initialise `78fb5abd...` ; fund `c90787bf...` ; register `e4301f3c...` ; buyer approval `c2914766...` ; guarded release `1db53487...` (seller 95.0, platform 4.7, Trustless Work fee 0.3 of 100) ; seller resolution with a depth-32 claim `14121eba...` ; break-glass refund of a 40% funded escrow `825f6986...` ; resolver refund to the buyer `ae7f6756...` (after its batch was revoked: `4aad4baa...`). Refused paths were recorded by enforce-mode simulation with their error codes.
 
-Lab run of guard v0.8, 24 Oct 2026 (testnet; guard `CAM3KPYP6KOBSU4XMCHW46ARCGTVUOKM44YHHLQ7OXDAP23RBVSTN5NK`, same settings): an escrow the buyer funded twice `38987ef8...`, `25400724...` (balance twice the amount), approved `50179953...` and then disputed by the seller `65d904f8...` refuses a resolution paying the seller the whole balance, or the amount plus one unit (#28, the seller's share is capped at the escrow amount), and pays the honest split, seller the amount and buyer the excess `65701f3b...` (seller 95.0, the release's net); a buyer who contests first `5693488f...` and disputes second `883b1dab...` blocks the claim-free seller payout (#25) and is refunded `db5f6458...`.
+**Lab run of guard v0.7, 24 Oct 2026** (testnet; guard `CDKARO3LJKPL7K5BJ6V3SO6OWTVLRQJDVNNIXCJ5BUIPZCPVEOCQ3IWK`, same lab asset, delay and contest window 120 s instead of 7 days): an escrow naming another platform address is refused by the precheck (#22); a third party's 1-unit transfer to an unfunded escrow `9ea846f6...` makes the precheck refuse it (#24) and registers it without marking it funded; the buyer's pre-built funding call still lands `0cc7af15...`; a claim anchored between the dust and the buyer's funding is refused (#16); a dusted escrow is cancelled by a platform dispute `1c565229...`, after which the buyer's pre-built funding call fails; a seller dispute after buyer approval `465baee4...` blocks release, and after the window, uncontested, the seller is paid the same net as the release `31c776b8...`; a buyer contest `82c18aa7...` blocks that path (#25), a contest without the buyer's signature fails (auth error), and the contested escrow is refunded to the buyer `aaaf6aea...`.
+
+**Lab run of guard v0.8, 24 Oct 2026** (testnet; guard `CAM3KPYP6KOBSU4XMCHW46ARCGTVUOKM44YHHLQ7OXDAP23RBVSTN5NK`, same settings): an escrow the buyer funded twice `38987ef8...`, `25400724...` (balance twice the amount), approved `50179953...` and then disputed by the seller `65d904f8...` refuses a resolution paying the seller the whole balance, or the amount plus one unit (#28, the seller's share is capped at the escrow amount), and pays the honest split, seller the amount and buyer the excess `65701f3b...` (seller 95.0, the release's net); a buyer who contests first `5693488f...` and disputes second `883b1dab...` blocks the claim-free seller payout (#25) and is refunded `db5f6458...`.
 
 Full hashes and stellar.expert links for the three lab runs above are in [testnet-proofs.md](testnet-proofs.md): [lab run 1](testnet-proofs.md#run-1-guard-v06-24-oct-2026), [the v0.7 lab run](testnet-proofs.md#run-2-guard-v07-24-oct-2026-2114-to-2120-utc) and [the v0.8 lab run](testnet-proofs.md#run-3-guard-v08-the-version-in-this-repository-24-oct-2026-2154-to-2158-utc). They were built from the lab crate `lab-guard`, so their Wasm hashes differ from the repo build; run 4 is the repo's own.
 
@@ -95,7 +233,7 @@ Full hashes and stellar.expert links for the three lab runs above are in [testne
 On Stellar (mainnet and testnet run Protocol 29):
 
 - **Trustless Work escrow** (single-release, v1). One escrow per EURC order. Trustless Work runs two v1 lineages, and the guard handles each: on **testnet** the deployed Wasm (`7c3f7b2a...`) takes Trustless Work's fee address as an argument of `release_funds`, `resolve_dispute` and `withdraw_remaining_funds`; on **mainnet** the observed single-release Wasm (`96d51751...`, branch `single-release-main`) hardcodes the fee account `GBWWSOATPLIC72ZBOIM7WJCT7VCAHNWW4QUBZ2H4FORMCCIUM5ZVKSZN`. Which hash the mainnet v1 API deploys is to be confirmed with Trustless Work in writing (section 11). The escrow holds EURC through the Stellar Asset Contract; as a contract address it needs no trustline. Once its balance is above zero, its roles, amount, fee, trustline and existing milestones cannot change (`EscrowPropertiesMismatch`); the platform role can still append new, unapproved milestones, which blocks release until a dispute is resolved, and our event reader alerts on it. A milestone whose status is empty can never be changed or approved, so every field (milestone status and title included) is final before the escrow's address is shown to the buyer: the deployer path sets them in the deploy transaction, and on the API path Motored sets a non-empty status with `update_escrow` right after deployment, before the precheck (tested). Anyone can send EURC to the escrow address, and any balance, even 1 unit, freezes `update_escrow`; an escrow dusted before the precheck is never shown to a buyer and is abandoned (tested).
-- **Guard contract** (ours, v0.10 pre-award in the public repo; D6 bills only its production hardening). One Soroban account contract per network, set as both the escrow's `release_signer` and its `dispute_resolver`. It is pinned at deploy time, per network, to one Trustless Work Wasm hash, to the EURC Stellar Asset Contract, to Motored's platform (fee) address and, on the testnet lineage, to Trustless Work's fee address, and it caps the escrow's platform fee rate (`max_platform_fee_bps`, set per deploy (500 bps in run 9; 1,000 bps planned for mainnet; shipping is paid to the platform address in the funding step, outside the escrow; an order whose quote is above the cap stays on the card rail); v0.10). Its `__check_auth` has three branches with separate keys: release, resolution and a refund-only break-glass branch. A read-only `check_escrow` lets Motored confirm an escrow before any funding call is handed out. A buyer-signed `contest` lets the buyer switch off the one seller payout path that needs no delivery claim (section 5).
+- **Guard contract** (ours, v0.10 pre-award in the public repo; D6 bills only its production hardening). One Soroban account contract per network, set as both the escrow's `release_signer` and its `dispute_resolver`. It is pinned at deploy time, per network, to one Trustless Work Wasm hash, to the EURC Stellar Asset Contract, to Motored's platform (fee) address and, on the testnet lineage, to Trustless Work's fee address, and it caps the escrow's platform fee rate (`max_platform_fee_bps`, v0.10), set per deploy: 500 bps in run 9, 1,000 bps planned for mainnet. Shipping is paid to the platform address in the funding step, outside the escrow, and an order whose quote is above the cap stays on the card rail. Its `__check_auth` has three branches with separate keys: release, resolution and a refund-only break-glass branch. A read-only `check_escrow` lets Motored confirm an escrow before any funding call is handed out. A buyer-signed `contest` lets the buyer switch off the one seller payout path that needs no delivery claim (section 5).
 - **Claim registry** (ours, pre-award in the public repo; D6 bills only its hardening). Write-once Merkle roots of delivery claims, each stored with the ledger timestamp of its anchor. The issuer key is separate from the release key, and a separate offline revoker key can revoke a batch, after which none of its claims verify. Its interface is `verify(batch_id, leaf, proof, index) -> bool`, `anchored_at(batch_id) -> u64` and `revoke(batch_id)`, with SHA-256 nodes and a proof depth of 32 or less. D6 adds the `Anchored` event and redeploys it with Wasm verified on stellar.expert.
 - **EURC.** Issuer `GDHU6WRG4IEQXM5NZ4BMPKOXHW76MZM4Y2IEMFDVXBSDP6SJY4ITNPP2` (Circle Internet Financial Europe SAS; an e-money token under MiCA, https://www.circle.com/eurc). SAC `CDTKPWPLOURQA2SGTKTUQOWRCBZEORB4BWBOMJ3D3ZTQQSGE5F6JBQLV`. Testnet EURC: `EURC-GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO`. `auth_required=false`, so a new (also a sponsored) trustline is authorised at creation with no Circle step. Circle can freeze EURC balances: G-account trustlines through the issuer (`auth_revocable=true`), and contract balances such as an escrow's through the SAC admin, which on mainnet is Circle's FiatTokenAdmin contract `CDCGJQS74ZKTL6TSP6JCXLEKOFO7RSA76QQCJD7PIIRZ2RLKPRZRHLRP` (its blocklist calls `set_authorized(false)`). Clawback is not enabled today (`auth_clawback_enabled=false`), but the issuer flags are not immutable (`auth_immutable=false`); if Circle enabled clawback it would apply to trustlines and contract balances created afterwards, including every escrow funded after that date. Testnet EURC is not revocable, so freeze behaviour is tested with testnet USDC (revocable, like mainnet EURC) or a lab asset; trustline checks are per asset and are run on EURC. Mainnet is EURC only.
 - **User wallets.** Privy embedded wallets are ordinary G-accounts owned by the user alone: the wallet's owner is the user, with no app authorisation key, no additional signers and no server-side export, and export goes only through the user's own session. Motored creates the wallet server-side for an account that passed our checks (buyer: verified email; seller: the same seller verification as the card rail). The user signs each transaction hash in the browser with Privy's raw-hash signing (Privy lists Stellar as Tier 2; https://docs.privy.io/wallets/overview/chains); before signing, our UI decodes the transaction and shows the escrow ID, amount and asset. Privy authenticates users through its JWT-based auth with our existing Firebase tokens. Users with their own wallet connect through Stellar Wallets Kit; every buyer or seller call uses the wallet as the transaction source, so only `signTransaction` is needed (LOBSTR and xBull do not sign auth entries), and testnet proofs use Freighter. We do not rely on Privy for fee or reserve sponsorship (Privy offers gas sponsorship only from Tier 3); Motored's sponsor account covers both.
@@ -115,6 +253,46 @@ Off-chain (Motored's own services). Each component has one owning deliverable; l
 
 ## 3. Roles per escrow
 
+Who holds which key, and what the guard lets each key do (section 6 has the full key table, section 5 the exact checks):
+
+```mermaid
+flowchart LR
+  subgraph USERS["Users: Motored holds none of these keys"]
+    BW["Buyer wallet<br/>fund, approve, dispute, contest"]
+    SW["Seller wallet<br/>receive, dispute, cash out via Bridge"]
+  end
+  subgraph KEYS["Motored signing keys: hold no funds"]
+    RK["Release key<br/>release service"]
+    VK["Resolver key<br/>own service account, holder per G1"]
+    BG["Break-glass key<br/>offline"]
+    IK["Registry issuer<br/>own service account"]
+    RV["Registry revoker<br/>offline"]
+    GA["Guard admin<br/>offline"]
+  end
+  PF["Motored platform fee account"]
+  G{{"Guard contract<br/>release_signer and dispute_resolver"}}
+  R[("Claim registry<br/>write-once delivery roots")]
+  E[("Trustless Work escrow<br/>one per order, holds EURC")]
+  TWF["Trustless Work fee account"]
+
+  RK -->|"release, only after the buyer approved"| G
+  VK -->|"pay the buyer, or the seller under the claim or approval rule"| G
+  BG -->|"refund the whole balance to the buyer only"| G
+  GA -.->|"new keys after a public 7-day timelock"| G
+  IK -->|"anchor delivery claims"| R
+  RV -->|"revoke a batch"| R
+  R -->|"verify a claim"| G
+  G -->|"authorises every exit"| E
+  BW -->|"fund, approve milestone"| E
+  PF -->|"open a dispute, edit an unfunded escrow"| E
+  E -->|"net payout"| SW
+  E -->|"refund"| BW
+  E -->|"platform fee"| PF
+  E -->|"0.3% fee"| TWF
+```
+
+The guard pays only the escrow's buyer, its seller and the two fee recipients it pins, and never more than the escrow amount to the seller.
+
 | Trustless Work role | Holder | Why |
 |---|---|---|
 | approver | Buyer wallet | The buyer confirms receipt by approving the milestone. |
@@ -126,9 +304,57 @@ Off-chain (Motored's own services). Each component has one owning deliverable; l
 
 v1 roles are single addresses. Trustless Work's v2 contracts (role arrays, admin, observers) also exist on mainnet; we integrate the v1 API and its Wasm. The guard reads v1 escrows only (decoding a v2 escrow fails, tested), so moving to v2 needs a new guard build with v2 types, used for new escrows only. If v1 is deprecated during the award we notify SCF before the affected tranche.
 
-EURC eligibility (v1): a single-seller cart; a DPD label minted by Motored, so the parcel is addressed to the order's delivery address; a destination country for which DPD's authenticated tracking API has already returned a "Delivered" status for a Motored-minted parcel (each country is checked before it is enabled; otherwise it stays card only); a platform fee between 0 and 9,900 basis points (Trustless Work's cap); and a seller who has completed EURC or bank-via-Bridge payout setup (a sponsored account with an EURC trustline). Local pickup, seller-entered tracking and the admin no-shipment override stay on the card rail; on an order paid through an escrow these actions are refused and the order is refunded instead. If no label can be minted after payment, the order is refunded.
+**EURC eligibility (v1).** An order can pay in EURC only with:
+
+- a single-seller cart;
+- a DPD label minted by Motored, so the parcel is addressed to the order's delivery address;
+- a destination country for which DPD's authenticated tracking API has already returned a "Delivered" status for a Motored-minted parcel (each country is checked before it is enabled; otherwise it stays card only);
+- a platform fee between 0 and 9,900 basis points (Trustless Work's cap);
+- a seller who has completed EURC or bank-via-Bridge payout setup (a sponsored account with an EURC trustline).
+
+Local pickup, seller-entered tracking and the admin no-shipment override stay on the card rail; on an order paid through an escrow these actions are refused and the order is refunded instead. If no label can be minted after payment, the order is refunded.
 
 ## 4. Sequence
+
+### Order lifecycle at a glance
+
+Fund, ship, deliver, then release or dispute. The full sequence with every call follows below.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor B as Buyer wallet
+  participant M as Motored
+  participant E as Escrow (one per order)
+  participant G as Guard contract
+  participant R as Claim registry
+  actor S as Seller wallet
+
+  Note over B,G: Fund
+  M->>G: check_escrow by simulation (pinned Wasm, roles, zero balance)
+  B->>E: fund_escrow in EURC, fee-bumped by Motored (no XLM needed)
+  M->>G: register_escrow (stores buyer, seller, amount, funded_at)
+  Note over M,S: Ship and deliver
+  S->>M: Ships with a Motored-minted DPD label
+  M->>R: DPD reports Delivered, claim root anchored (hourly batch)
+  alt Buyer confirms receipt
+    B->>E: approve milestone
+    M->>E: release_funds, authorised by the guard (release key)
+    E->>S: amount less the 0.3% Trustless Work fee and the platform fee
+  else Buyer silent 7 days after the claim was anchored
+    M->>E: open a dispute as platform
+    M->>E: resolve_dispute to the seller
+    E->>G: guard checks the claim, anchored after funding and 7 days old
+    E->>S: same net as a release
+  else Buyer disputes before release
+    B->>E: dispute
+    M->>E: resolve_dispute to the buyer (resolver key, through the guard)
+    E->>B: balance less both fees
+    M->>B: top-up of both fees from the fee account, so the buyer gets 100%
+  end
+```
+
+### Full sequence (every call)
 
 ```mermaid
 sequenceDiagram
@@ -148,22 +374,22 @@ sequenceDiagram
   M->>M: Sanctions check of the funding address
   SP->>B: Sponsored account + EURC trustline if missing (user co-signs)
   opt Buyer pays by SEPA
-    B->>BR: KYC (hosted); Bridge virtual account created after the trustline exists
+    B->>BR: KYC (hosted), Bridge virtual account created after the trustline exists
     B->>BR: SEPA (amount quoted gross of Bridge fees)
     BR->>B: EURC to buyer wallet
   end
   M->>TW: Deploy escrow (roles, amount, platform fee bps, milestone)
   TW-->>M: Unsigned XDR, signed and submitted by SP
   M->>E: Every field final now: if a milestone status is empty, update_escrow (platform) before the precheck
-  M->>G: check_escrow(E) by simulation (zero balance, platform pinned); re-read get_escrow
+  M->>G: check_escrow(E) by simulation (zero balance, platform pinned), re-read get_escrow
   M->>B: fund_escrow XDR for exactly the amount, with expected_escrow
   B->>E: fund_escrow (EURC via SAC), fee-bumped by SP
-  M->>E: Event reader sees funding; reads balance
-  M->>G: register_escrow(E) (balance > 0: roles frozen; stores buyer, seller; funded_at once balance >= amount)
-  M->>M: Order paid only if the buyer's own fund_escrow brought balance >= amount; payout held (fundingSource stellar_escrow)
-  M->>D: Motored-minted label; seller ships; authenticated tracking poll
+  M->>E: Event reader sees funding, reads balance
+  M->>G: register_escrow(E) (balance > 0: roles frozen, stores buyer, seller, funded_at once balance >= amount)
+  M->>M: Order paid only if the buyer's own fund_escrow brought balance >= amount, payout held (fundingSource stellar_escrow)
+  M->>D: Motored-minted label, seller ships, authenticated tracking poll
   D-->>M: Delivered (the order's one parcel)
-  M->>R: anchor(batch_id, root) incl. this escrow's claim; registry stores anchor time
+  M->>R: anchor(batch_id, root) incl. this escrow's claim, registry stores anchor time
   alt Buyer confirms receipt
     B->>E: approve milestone (buyer signs)
     SP->>E: release_funds(G[, TW fee address on testnet])
@@ -173,12 +399,12 @@ sequenceDiagram
   else Buyer silent 7 days after the claim was anchored
     M->>E: dispute (platform role)
     SP->>E: resolve_dispute({seller: amount, buyer: any excess}) authorised by G
-    E->>G: __check_auth (resolution branch: recipients in {buyer, seller}; seller share <= amount; claim verifies; anchored after funded_at; now >= anchored_at + 7 days)
+    E->>G: __check_auth (resolution branch: recipients in {buyer, seller}, seller share <= amount, claim verifies, anchored after funded_at, now >= anchored_at + 7 days)
     E->>S: payout less fees
   else Buyer approved and a dispute (seller, platform or buyer) blocks release, in either order
-    M->>G: register_escrow(E) records approved_at and disputed_at; buyer notified
+    M->>G: register_escrow(E) records approved_at and disputed_at, buyer notified
     opt Buyer contests within 7 days
-      B->>G: contest(E, evidence hash) (buyer signs; for a buyer dispute it is sent before the dispute); seller then needs a claim, or the buyer is refunded
+      B->>G: contest(E, evidence hash) (buyer signs, for a buyer dispute it is sent before the dispute), seller then needs a claim, or the buyer is refunded
     end
     SP->>E: resolve_dispute({seller: amount, buyer: any excess}) authorised by G, 7 days after both were recorded
     E->>G: __check_auth (resolution branch: approval and dispute on record, no contest, window passed, seller share <= amount)
@@ -313,15 +539,52 @@ The signature covers Soroban's authorisation payload (network, nonce, invocation
 | Guard admin | Motored, offline | Propose new release, resolver and break-glass keys; they apply after a public 7-day timelock, so the admin indirectly holds those powers | Change keys without the public delay; move funds directly |
 | Resolver admin | The resolver-key holder | Replace the resolver key at once | Change any other key |
 
-Key storage, to be set up before the first testnet key is created (D2, D7): keys in Google Secret Manager with Data Access audit logs enabled for Secret Manager, per-secret IAM bound to dedicated signer service accounts, no project-level secret access for the web, worker or deployer service accounts, and CI on short-lived credentials. Cloud KMS supports Ed25519 at the software protection level only; it is evaluated in D7. On mainnet (D10) the release, resolver and registry-issuer keys move to a non-exportable signer (Cloud KMS Ed25519, if offered in our region) or, failing that, each runs as its own service on the hosting platform whose Secret Manager access is scoped to that one key, so a compromise of the web or worker runtime (threat E2 in [threat-model.md](threat-model.md)) reaches no signing key. Every signature is logged with its order reference.
+**Key storage.**
 
-**Rotating the fixed roles, and a leaked issuer.** The registry's issuer and revoker, the guard admin and the resolver admin are addresses fixed at deployment with no setter, and the guard's registry pointer is fixed too. Each is therefore a Stellar G-account with multisig, never a bare key: its signers rotate at the account level (add the new signer, set the master weight to 0, remove the old signer), and neither contract changes. A leaked issuer signer is removed that way, and any batch it anchored is revoked by the offline revoker inside the 7-day wait. If the issuer account itself must be replaced, a new registry and a new guard pointing to it are deployed for new escrows (the D6 migration drill), while the revoker keeps watching the old registry until its last escrow closes. The guard's release, resolver and break-glass keys rotate in-contract (7-day timelock, or at once for the resolver key).
+- Key storage, to be set up before the first testnet key is created (D2, D7): keys in Google Secret Manager with Data Access audit logs enabled for Secret Manager, per-secret IAM bound to dedicated signer service accounts, no project-level secret access for the web, worker or deployer service accounts, and CI on short-lived credentials.
+- Cloud KMS supports Ed25519 at the software protection level only; it is evaluated in D7.
+- On mainnet (D10) the release, resolver and registry-issuer keys move to a non-exportable signer (Cloud KMS Ed25519, if offered in our region) or, failing that, each runs as its own service on the hosting platform whose Secret Manager access is scoped to that one key, so a compromise of the web or worker runtime (threat E2 in [threat-model.md](threat-model.md)) reaches no signing key.
+- Every signature is logged with its order reference.
 
-**Trust model, stated plainly.** For an escrow created with the guard in both roles on the pinned Trustless Work Wasm, Motored's keys can do this: open a dispute on any escrow, and, through the guard, resolve it to that escrow's buyer at any time, or to its seller once a Motored-issued delivery claim, anchored after the escrow was fully funded, is at least 7 days old, or once the buyer's approval of every milestone has been on record for 7 days alongside a dispute without a buyer contest. As dispute resolver and platform, Motored can also hold a release, by opening a dispute or adding a milestone, until the dispute is resolved through the guard. Shipping is not escrowed: the buyer pays it to Motored's platform address in the funding step, so shipping refunds rest on Motored, as on the card rail. No Motored key can pay anyone except that escrow's buyer, its seller and the two fee recipients the guard pins (Trustless Work's fee account and Motored's platform address), and no resolution can give the seller more than the escrow amount. The guard pins the recipients and caps the platform fee rate: the rate is set when the escrow is created and checked against the order by Motored's backend, and the guard refuses to register an escrow above its cap (set per deploy (500 bps in run 9; 1,000 bps planned for mainnet; shipping is paid to the platform address in the funding step, outside the escrow; an order whose quote is above the cap stays on the card rail); guard v0.10, done pre-award and landed on testnet in run 9). Escrows created while Motored's backend is compromised are outside this guarantee, except that the guard's per-network pins (Trustless Work Wasm, EURC, Motored's platform address, Trustless Work's fee address) still hold, so the two fee recipients stay fixed (and the platform fee rate of such an escrow stays at or under the guard's cap): the buyer's funding signature commits to the escrow's roles through `expected_escrow`, and our checkout shows the escrow's receiver before signing, but an attacker who controls checkout could show false data. Motored issues the claim registry, so a delivery claim is Motored's signed record of DPD's delivery event. It does not independently prove delivery; it binds every seller payout without buyer approval to a public, write-once record anyone can audit, and a revoked batch stops paying. A compromise of the runtime that holds several keys could therefore pay sellers of existing escrows without buyer approval no earlier than 7 days after a newly anchored claim, and sellers of escrows the buyer already approved after the 7-day contest window, never anyone else; separating the resolver and issuer keys onto their own service accounts, the revoker key and alerts on every anchor and resolution are the mitigations, and the case is in the D7 threat model.
+**Rotating the fixed roles, and a leaked issuer.**
 
-**Legal gate G1.** Under MiCA, e-money tokens such as EURC are e-money. The EBA advised national supervisors that its no-action period for crypto-asset service providers that transfer or hold e-money tokens for clients without PSD2 authorisation ended on 2 Mar 2026, so both MiCA and PSD2 can apply (EBA, https://www.eba.europa.eu/node/18479). Motored holds no user keys (Privy wallets are owned by the user alone, as configured above) and never signs a payment from a buyer's or seller's account. Motored does decide disputes, can pay the seller of a silent buyer after 7 days or of a buyer-approved escrow blocked by an uncontested dispute, can block a release by appending a milestone, can refund partially funded escrows, and tops up refunds from its fee account; whether those roles count as control of client funds is for the opinion. Mainnet EURC orders start only after a written opinion from Lithuanian counsel confirms that each role Motored holds (release key, resolver key, opening disputes and editing escrows as platform, the refund top-up, creating Bridge customers and virtual accounts by API and passing Travel Rule data, account sponsorship and fee-bumps) needs no authorisation Motored lacks, or after those roles move to a licensed party. Its scope also covers AML obliged-entity status, the transfer-of-funds rule, consumer withdrawal and a Circle freeze. Bridge (Bridge Building S.A., CSSF-authorised CASP and EMI, https://www.bridge.xyz/legal; ESMA MiCA CASP register LEI 254900MVWQXMF77YZP65) is the licensed counterparty for euros in and out, and users contract with Bridge directly through its hosted KYC/KYB. The opinion is paid by Motored and is not in the award budget.
+- The registry's issuer and revoker, the guard admin and the resolver admin are addresses fixed at deployment with no setter, and the guard's registry pointer is fixed too.
+- Each is therefore a Stellar G-account with multisig, never a bare key: its signers rotate at the account level (add the new signer, set the master weight to 0, remove the old signer), and neither contract changes.
+- A leaked issuer signer is removed that way, and any batch it anchored is revoked by the offline revoker inside the 7-day wait.
+- If the issuer account itself must be replaced, a new registry and a new guard pointing to it are deployed for new escrows (the D6 migration drill), while the revoker keeps watching the old registry until its last escrow closes.
+- The guard's release, resolver and break-glass keys rotate in-contract (7-day timelock, or at once for the resolver key).
 
-**Privacy.** No directly identifying data goes on-chain. Claim leaves carry a random order reference and a salted HMAC commitment to the parcel number, so parcel numbers cannot be brute-forced and linked to DPD's public tracking page, and escrow text fields carry random or generic values. Wallet addresses, amounts and times are public and, where linkable to a Motored user, are pseudonymous personal data. Public reports are aggregates (pass/fail and counts). The public re-check script proves Merkle inclusion and anchor time, nothing more. A DPIA and data processing agreements with Privy, Bridge and Trustless Work (whose API and indexer see escrow data) are completed before mainnet.
+**Trust model, stated plainly.**
+
+- For an escrow created with the guard in both roles on the pinned Trustless Work Wasm, Motored's keys can do this: open a dispute on any escrow, and, through the guard, resolve it to that escrow's buyer at any time, or to its seller once a Motored-issued delivery claim, anchored after the escrow was fully funded, is at least 7 days old, or once the buyer's approval of every milestone has been on record for 7 days alongside a dispute without a buyer contest.
+- As dispute resolver and platform, Motored can also hold a release, by opening a dispute or adding a milestone, until the dispute is resolved through the guard.
+- Shipping is not escrowed: the buyer pays it to Motored's platform address in the funding step, so shipping refunds rest on Motored, as on the card rail.
+- No Motored key can pay anyone except that escrow's buyer, its seller and the two fee recipients the guard pins (Trustless Work's fee account and Motored's platform address), and no resolution can give the seller more than the escrow amount.
+- The guard pins the recipients and caps the platform fee rate: the rate is set when the escrow is created and checked against the order by Motored's backend, and the guard refuses to register an escrow above its cap (guard v0.10, done pre-award and landed on testnet in run 9). The cap is set per deploy: 500 bps in run 9, 1,000 bps planned for mainnet. Shipping is paid to the platform address in the funding step, outside the escrow, and an order whose quote is above the cap stays on the card rail.
+- Escrows created while Motored's backend is compromised are outside this guarantee, except that the guard's per-network pins (Trustless Work Wasm, EURC, Motored's platform address, Trustless Work's fee address) still hold, so the two fee recipients stay fixed (and the platform fee rate of such an escrow stays at or under the guard's cap): the buyer's funding signature commits to the escrow's roles through `expected_escrow`, and our checkout shows the escrow's receiver before signing, but an attacker who controls checkout could show false data.
+- Motored issues the claim registry, so a delivery claim is Motored's signed record of DPD's delivery event.
+- It does not independently prove delivery; it binds every seller payout without buyer approval to a public, write-once record anyone can audit, and a revoked batch stops paying.
+- A compromise of the runtime that holds several keys could therefore pay sellers of existing escrows without buyer approval no earlier than 7 days after a newly anchored claim, and sellers of escrows the buyer already approved after the 7-day contest window, never anyone else; separating the resolver and issuer keys onto their own service accounts, the revoker key and alerts on every anchor and resolution are the mitigations, and the case is in the D7 threat model.
+
+**Legal gate G1.**
+
+- Under MiCA, e-money tokens such as EURC are e-money.
+- The EBA advised national supervisors that its no-action period for crypto-asset service providers that transfer or hold e-money tokens for clients without PSD2 authorisation ended on 2 Mar 2026, so both MiCA and PSD2 can apply (EBA, https://www.eba.europa.eu/node/18479).
+- Motored holds no user keys (Privy wallets are owned by the user alone, as configured above) and never signs a payment from a buyer's or seller's account.
+- Motored does decide disputes, can pay the seller of a silent buyer after 7 days or of a buyer-approved escrow blocked by an uncontested dispute, can block a release by appending a milestone, can refund partially funded escrows, and tops up refunds from its fee account; whether those roles count as control of client funds is for the opinion.
+- Mainnet EURC orders start only after a written opinion from Lithuanian counsel confirms that each role Motored holds (release key, resolver key, opening disputes and editing escrows as platform, the refund top-up, creating Bridge customers and virtual accounts by API and passing Travel Rule data, account sponsorship and fee-bumps) needs no authorisation Motored lacks, or after those roles move to a licensed party.
+- Its scope also covers AML obliged-entity status, the transfer-of-funds rule, consumer withdrawal and a Circle freeze.
+- Bridge (Bridge Building S.A., CSSF-authorised CASP and EMI, https://www.bridge.xyz/legal; ESMA MiCA CASP register LEI 254900MVWQXMF77YZP65) is the licensed counterparty for euros in and out, and users contract with Bridge directly through its hosted KYC/KYB.
+- The opinion is paid by Motored and is not in the award budget.
+
+**Privacy.**
+
+- No directly identifying data goes on-chain.
+- Claim leaves carry a random order reference and a salted HMAC commitment to the parcel number, so parcel numbers cannot be brute-forced and linked to DPD's public tracking page, and escrow text fields carry random or generic values.
+- Wallet addresses, amounts and times are public and, where linkable to a Motored user, are pseudonymous personal data.
+- Public reports are aggregates (pass/fail and counts).
+- The public re-check script proves Merkle inclusion and anchor time, nothing more.
+- A DPIA and data processing agreements with Privy, Bridge and Trustless Work (whose API and indexer see escrow data) are completed before mainnet.
 
 ## 7. Money and ledger
 
@@ -391,14 +654,44 @@ Key storage, to be set up before the first testnet key is created (D2, D7): keys
 ## 9. Security, testing and audit plan
 
 - **Trustless Work.** Its site links a Runtime Verification audit report; we will ask which code version it covered (section 11). We do not modify its contract; the guard pins its deployed Wasm hash per network.
-- **Our contracts** (guard and registry): unit tests with soroban-sdk testutils (99 in the repo: guard 88, registry 11) that run Trustless Work's deployed Wasm files (testnet and mainnet lineage), covering: release only after the buyer's approval and with the release key; a pinned fee address; recipients outside {buyer, seller}; a seller payout without a claim, with a claim for another escrow, before anchor time + 7 days, with a claim anchored before full funding, and from a revoked batch; platform and receiver pins; a platform fee rate above the guard's cap (v0.10); third-party dust before funding (no head start, dust to the buyer), after release, before a status fix, and as a cancellation by platform dispute; full funding by a third party; a seller or buyer dispute after the buyer's approval (paid after the contest window at the release's net, refused while early, with a seller share above the escrow amount (on the claim path too), after a contest, without full funding, or without an approval; a contest only by the buyer and only inside the window, and a contest filed before the dispute); `withdraw_remaining_funds` to anyone but the buyer or seller, to the seller without a claim or approval, above the escrow amount or a second time, and paying the seller alone while a buyer without a trustline has dusted the escrow (v0.10); partial funding refunded through break-glass; break-glass paying anyone but the buyer; Wasm and token pins against look-alike contracts; the empty-status trap; the cancellation arbiter; milestone appends while funded; disputes that cannot be withdrawn; key-rotation timelocks; replay; depth-32 metering; in-contract TTL upkeep on testnet- and mainnet-sized ledgers, with a refused authorisation rolling the extension back (registry included since v0.10); and, on the mainnet Wasm, every exit reverting while the fee account lacks a trustline. On testnet, four refused paths already FAIL on-chain as public transactions (runs 6 and 8, 29 Oct 2026), and so does a registration above the platform fee cap (run 9); D6 lands six more. The TypeScript fee, cap and rounding rules also have a seeded randomized property test. CI on every push; the first public run was green on all 4 jobs (29 Oct 2026, https://github.com/zbagdzevicius/motored-stellar/actions/runs/40831236550).
+- **Our contracts** (guard and registry): unit tests with soroban-sdk testutils (99 in the repo: guard 88, registry 11) that run Trustless Work's deployed Wasm files (testnet and mainnet lineage), covering:
+  - release only after the buyer's approval and with the release key;
+  - a pinned fee address;
+  - recipients outside {buyer, seller};
+  - a seller payout without a claim, with a claim for another escrow, before anchor time + 7 days, with a claim anchored before full funding, and from a revoked batch;
+  - platform and receiver pins;
+  - a platform fee rate above the guard's cap (v0.10);
+  - third-party dust before funding (no head start, dust to the buyer), after release, before a status fix, and as a cancellation by platform dispute;
+  - full funding by a third party;
+  - a seller or buyer dispute after the buyer's approval (paid after the contest window at the release's net, refused while early, with a seller share above the escrow amount (on the claim path too), after a contest, without full funding, or without an approval; a contest only by the buyer and only inside the window, and a contest filed before the dispute);
+  - `withdraw_remaining_funds` to anyone but the buyer or seller, to the seller without a claim or approval, above the escrow amount or a second time, and paying the seller alone while a buyer without a trustline has dusted the escrow (v0.10);
+  - partial funding refunded through break-glass;
+  - break-glass paying anyone but the buyer;
+  - Wasm and token pins against look-alike contracts;
+  - the empty-status trap;
+  - the cancellation arbiter;
+  - milestone appends while funded;
+  - disputes that cannot be withdrawn;
+  - key-rotation timelocks;
+  - replay;
+  - depth-32 metering;
+  - in-contract TTL upkeep on testnet- and mainnet-sized ledgers, with a refused authorisation rolling the extension back (registry included since v0.10);
+  - on the mainnet Wasm, every exit reverting while the fee account lacks a trustline.
+
+  On testnet, four refused paths already FAIL on-chain as public transactions (runs 6 and 8, 29 Oct 2026), and so does a registration above the platform fee cap (run 9); D6 lands six more. The TypeScript fee, cap and rounding rules also have a seeded randomized property test. CI on every push; the first public run was green on all 4 jobs (29 Oct 2026, https://github.com/zbagdzevicius/motored-stellar/actions/runs/40831236550).
 - **Tranche 2 (D7).** A STRIDE threat model covering: release-key compromise, a runtime compromise reaching several keys, a compromised checkout creating attacker-roled escrows, forged claims and revocation, the Motored-issued registry trust assumption, silent buyers, refund/release races, resolver and `withdraw_remaining_funds` power, platform milestone appends, a guard defect, escrow changes before funding or after resolution, under- and over-funding and third-party deposits, the refund top-up, disputes after release, a Circle freeze of an escrow or a fee account, 0.3% fee drift, memo loss, Travel Rule holds, a Bridge outage, blind signing of partner-built transactions, Privy owner misconfiguration, sponsor drain, RPC gaps, archived entries, sanctions and AML. A privacy section (LINDDUN-style). An on-chain monitoring plan with 14 alerts (numbered in appendix A, D7): stuck escrows, failed releases, reconciliation gaps, resolutions, EURC transfers out of escrows with no matching record, changes to a registered escrow, disputes on approved escrows, buyer contests, claim anchors, claim revocations, guard key proposals and rotations, fee-account trustline status, entries near expiry and a low sponsor balance.
 - **Before mainnet.** We apply to the SCF Audit Bank in Tranche 2 for an external audit of the guard and registry (audits are not in this budget). Until that review, EURC checkout is limited to EUR 1,000 per order and EUR 5,000 in total open escrow value. Mainnet EURC opens only after the G1 legal opinion confirms that each role Motored holds needs no authorisation Motored lacks (or those roles have moved to a licensed party), the updated seller and buyer terms have been published for at least 15 days, and the Trustless Work fee account precondition in section 8 holds.
 - **Open source.** Guard, registry, escrow adapter package, anchoring job, release service and metric script are public under Apache-2.0 in this repository; the Stellar-facing part of the D3/D4 wiring (the escrow order-state machine) and the D7 reconciliation adapters ship here as Apache-2.0 packages during Tranches 1-2, with the testnet regression suite in D8; the first tagged release, the completed integration guide and the mainnet canary ship in D13.
 
 ## 10. Build plan and effort (matches the submission budget)
 
-Rate: engineering USD 70/h for the two engineers who build and run Motored's live marketplace; 1 dev-day = 8 h = USD 560. The rail is the two engineers' main work for the 22 build weeks; marketplace engineering continues outside this budget. Total USD 61,600 = 96 engineering dev-days (768 h, USD 53,760) + the Integration Track user-testing allowance (196 h of operations time at USD 40/h, USD 7,840, 12.73%, Tranches 2-3 only, under the one-third cap of USD 20,533.33). On 29 Oct 2026 the ask was trimmed from USD 72,800: the admin escrow console (D9), the Polish locale, the escrow emails and the invoice and DAC7 records are funded by Motored and not billed, and two 2-dev-day lines changed tranche to keep the 30/30/40 split exact (the 15-minute reconciliation task from D3 to D7, the testnet regression suite from D13 to D8). 22 build weeks from payment #0. The Tranche 3 metric closes by week 26: it counts escrows funded in a 45-day funding window that starts at the first funding of a counted customer escrow and released or resolved to the seller within 14 days after that window ends; the closing deadline falls no later than week 26 after payment #0 and within 80 days of the Tranche 2 payment (so the completion form meets the 90-day limit), so the funding window must start by day 21 after that payment; if the window cannot start by day 21, we agree pro-rated thresholds with SCF in writing by day 21 after that payment. Every billed line calls a partner API or contract, or reads or writes a named Stellar object (escrow contract ID, funding and release events, release tx hash, fee in basis points, EURC transfers, delivery-claim anchors), and is checked by tx hashes. Pre-award work (the code in this repository at filing, the testnet lab runs and runs 4 to 8) is not billed.
+- **Rate.** Engineering USD 70/h for the two engineers who build and run Motored's live marketplace; 1 dev-day = 8 h = USD 560. The rail is the two engineers' main work for the 22 build weeks; marketplace engineering continues outside this budget.
+- **Total.** USD 61,600 = 96 engineering dev-days (768 h, USD 53,760) + the Integration Track user-testing allowance (196 h of operations time at USD 40/h, USD 7,840, 12.73%, Tranches 2-3 only, under the one-third cap of USD 20,533.33).
+- **Budget trim.** On 29 Oct 2026 the ask was trimmed from USD 72,800: the admin escrow console (D9), the Polish locale, the escrow emails and the invoice and DAC7 records are funded by Motored and not billed, and two 2-dev-day lines changed tranche to keep the 30/30/40 split exact (the 15-minute reconciliation task from D3 to D7, the testnet regression suite from D13 to D8).
+- **Timeline.** 22 build weeks from payment #0.
+- **Metric window and pro-rating rule.** The Tranche 3 metric closes by week 26: it counts escrows funded in a 45-day funding window that starts at the first funding of a counted customer escrow and released or resolved to the seller within 14 days after that window ends; the closing deadline falls no later than week 26 after payment #0 and within 80 days of the Tranche 2 payment (so the completion form meets the 90-day limit), so the funding window must start by day 21 after that payment; if the window cannot start by day 21, we agree pro-rated thresholds with SCF in writing by day 21 after that payment.
+- **Billing rule.** Every billed line calls a partner API or contract, or reads or writes a named Stellar object (escrow contract ID, funding and release events, release tx hash, fee in basis points, EURC transfers, delivery-claim anchors), and is checked by tx hashes.
+- **Not billed.** Pre-award work (the code in this repository at filing, the testnet lab runs and runs 4 to 8) is not billed.
 
 | ID | Deliverable (billed remaining work only) | Integration served | Tranche | Dev-days | USD |
 |---|---|---|---|---|---|
@@ -425,17 +718,69 @@ Rate: engineering USD 70/h for the two engineers who build and run Motored's liv
 | | **T3 subtotal** (35 dev-days + 126 h ops) | | | **35** | **24,640** |
 | | **Total** (96 dev-days + 196 h ops) | | | **96** | **61,600** |
 
-SCF payments: #0 10% = 6,160 and #1 20% = 12,320 fund T1 (18,480); #2 30% = 18,480 funds T2; #3 40% = 24,640 funds T3, paid on the on-chain metric.
+**SCF payments.**
 
-By integration: all USD 53,760 of engineering is integration work, in two parts. (1) Partner APIs and contracts: Trustless Work's v1 API and escrow contract with our guard in its release and resolver roles (D1, D6) USD 7,840 (12.73%); Privy and Stellar Wallets Kit, with wallets holding EURC (D2) USD 3,360 (5.45%); Bridge (D5) USD 3,920 (6.36%); together 27 dev-days, 216 h, USD 15,120 (24.55%). (2) Wiring Trustless Work escrow, EURC, Bridge and the wallets into Motored's checkout, order, payout and dispute system, and taking that integrated system to mainnet: the escrow-settled order lifecycle (D3, D4, D11) USD 14,560 (23.64%), plus the SCF-required security, mainnet and open-source work (D7, D10, D13) USD 11,760 (19.09%) and hardening and live rollout (D8, D12) USD 12,320 (20.00%); together 69 dev-days, 552 h, USD 38,640 (62.73%). The Integration Track says "most of your budget should go towards your integration costs", connective tissue allowed, and the Submission Criteria fund development of "the Stellar-integrated components". Each engineering line exists only because of a listed partner: Trustless Work escrow into checkout, orders, payouts and disputes (D1, D3, D4, D6); EURC with Privy and Stellar Wallets Kit into accounts (D2); Bridge into payouts (D5, D11); all four hardened and taken to mainnet (D7, D8, D10, D12, D13). Partner calls, our contracts and the code wiring them in form one Stellar-integrated component. Its Stellar-facing part (the escrow order-state machine of D3/D4 and the reconciliation adapters of D7) ships as Apache-2.0 packages in the public repo during Tranches 1-2, and each wiring deliverable is verified by its public module, CI and a recorded end-to-end run. User-testing allowance (U1-U5) USD 7,840 (12.73%). 15,120 + 38,640 + 7,840 = 61,600. Part (1)'s 216 h by partner: Trustless Work 112 h (D1 56 h on its v1 API and escrow; D6 56 h on the guard that holds Trustless Work's release and resolver roles), Bridge 56 h (D5) and Privy with Stellar Wallets Kit 48 h (D2). Of those, 106 h are calls against the partners' own APIs, matching the Integration List estimates (Trustless Work 56 h, Bridge 40 h, Privy 6 h, Stellar Wallets Kit 4 h); the other 110 h are the guard hardening and the wallet, review and sponsorship screens around those calls, still part (1). Part (2), the 552 h of wiring, is integration work too: each line exists only to carry a listed partner into Motored's order system or onto mainnet.
+| Payment | Share | USD | Funds |
+|---|---|---|---|
+| #0 | 10% | 6,160 | T1 (with #1: 18,480) |
+| #1 | 20% | 12,320 | T1 |
+| #2 | 30% | 18,480 | T2 |
+| #3 | 40% | 24,640 | T3, paid on the on-chain metric |
 
-Why each connective-tissue line is needed (without it, an EURC order cannot ...): D3, be marked paid, paid out, refunded or disputed against its escrow; D4, be bought at all; D11, pay the seller in EURC or bank via Bridge, or be refunded after release. No further trim is offered: the lines a panel could cut first (the D9 console, the Polish locale, escrow emails, invoice and DAC7 records) already moved to Motored's own budget on 29 Oct 2026.
+**By integration.** All USD 53,760 of engineering is integration work, in two parts.
 
-Public artefact per wiring deliverable (each ships under Apache-2.0 in the public `motored-stellar` repo and is named in that deliverable's verification): D3, a new `packages/escrow-orders` (the escrow order-state machine), with the public CI tests for fee and cap boundaries, wrong top-up and underfunding; D4, `scripts/testnet/e2e.ts` and `examples/order-flow` on the checkout's `fund_escrow` path; D7, `docs/threat-model.md` and a `packages/reconciler` extension with the public CI test for the one-cent gap; D8, a public CI test per failure state in `packages/escrow`, `eurc`, `wallets` and `ramps`, and the testnet regression suite; D10, the mainnet record in `docs/testnet-proofs.md`; D11, the off-ramp in `packages/ramps` and the post-release refund rules in `packages/escrow`; D12, `packages/reconciler` and `scripts/metric`; D13, the tagged release, integration guide and canary. Only Motored's own checkout UI, admin screens and marketplace code stay private; they are verified by a recorded end-to-end run and a redacted record.
+| Part | Work | Deliverables | Dev-days, hours | USD | Share |
+|---|---|---|---|---|---|
+| (1) Partner APIs and contracts | Trustless Work's v1 API and escrow contract with our guard in its release and resolver roles | D1, D6 | | 7,840 | 12.73% |
+| | Privy and Stellar Wallets Kit, with wallets holding EURC | D2 | | 3,360 | 5.45% |
+| | Bridge | D5 | | 3,920 | 6.36% |
+| | **Part (1) together** | | **27 dev-days, 216 h** | **15,120** | **24.55%** |
+| (2) Wiring Trustless Work escrow, EURC, Bridge and the wallets into Motored's checkout, order, payout and dispute system, and taking that integrated system to mainnet | The escrow-settled order lifecycle | D3, D4, D11 | | 14,560 | 23.64% |
+| | The SCF-required security, mainnet and open-source work | D7, D10, D13 | | 11,760 | 19.09% |
+| | Hardening and live rollout | D8, D12 | | 12,320 | 20.00% |
+| | **Part (2) together** | | **69 dev-days, 552 h** | **38,640** | **62.73%** |
+
+- The Integration Track says "most of your budget should go towards your integration costs", connective tissue allowed, and the Submission Criteria fund development of "the Stellar-integrated components".
+- Each engineering line exists only because of a listed partner: Trustless Work escrow into checkout, orders, payouts and disputes (D1, D3, D4, D6); EURC with Privy and Stellar Wallets Kit into accounts (D2); Bridge into payouts (D5, D11); all four hardened and taken to mainnet (D7, D8, D10, D12, D13).
+- Partner calls, our contracts and the code wiring them in form one Stellar-integrated component.
+- Its Stellar-facing part (the escrow order-state machine of D3/D4 and the reconciliation adapters of D7) ships as Apache-2.0 packages in the public repo during Tranches 1-2, and each wiring deliverable is verified by its public module, CI and a recorded end-to-end run.
+- User-testing allowance (U1-U5) USD 7,840 (12.73%).
+- 15,120 + 38,640 + 7,840 = 61,600.
+- Part (1)'s 216 h by partner: Trustless Work 112 h (D1 56 h on its v1 API and escrow; D6 56 h on the guard that holds Trustless Work's release and resolver roles), Bridge 56 h (D5) and Privy with Stellar Wallets Kit 48 h (D2).
+- Of those, 106 h are calls against the partners' own APIs, matching the Integration List estimates (Trustless Work 56 h, Bridge 40 h, Privy 6 h, Stellar Wallets Kit 4 h); the other 110 h are the guard hardening and the wallet, review and sponsorship screens around those calls, still part (1).
+- Part (2), the 552 h of wiring, is integration work too: each line exists only to carry a listed partner into Motored's order system or onto mainnet.
+
+**Why each connective-tissue line is needed (without it, an EURC order cannot ...):**
+
+- D3, be marked paid, paid out, refunded or disputed against its escrow;
+- D4, be bought at all;
+- D11, pay the seller in EURC or bank via Bridge, or be refunded after release.
+
+No further trim is offered: the lines a panel could cut first (the D9 console, the Polish locale, escrow emails, invoice and DAC7 records) already moved to Motored's own budget on 29 Oct 2026.
+
+**Public artefact per wiring deliverable (each ships under Apache-2.0 in the public `motored-stellar` repo and is named in that deliverable's verification):**
+
+- D3, a new `packages/escrow-orders` (the escrow order-state machine), with the public CI tests for fee and cap boundaries, wrong top-up and underfunding;
+- D4, `scripts/testnet/e2e.ts` and `examples/order-flow` on the checkout's `fund_escrow` path;
+- D7, `docs/threat-model.md` and a `packages/reconciler` extension with the public CI test for the one-cent gap;
+- D8, a public CI test per failure state in `packages/escrow`, `eurc`, `wallets` and `ramps`, and the testnet regression suite;
+- D10, the mainnet record in `docs/testnet-proofs.md`;
+- D11, the off-ramp in `packages/ramps` and the post-release refund rules in `packages/escrow`;
+- D12, `packages/reconciler` and `scripts/metric`;
+- D13, the tagged release, integration guide and canary.
+
+Only Motored's own checkout UI, admin screens and marketplace code stay private; they are verified by a recorded end-to-end run and a redacted record.
 
 The submission's field B shows the same split: partner APIs and contracts USD 15,120 plus wiring into Motored's order system and mainnet USD 38,640, so 100% of engineering is integration work, plus the user-testing allowance USD 7,840.
 
-Integration List estimates: each partner's API work fits inside its estimate (Trustless Work in D1, list: no more than 2 weeks; Bridge in D5, list: 1-5 days; Privy and Wallets Kit in D2, list: under 1 day each; list re-checked live 24-25 Oct 2026). Integrating them into a live marketplace also means changing our checkout, order, escrow-ledger, payout and dispute code so that orders settle through these blocks. Those hours are integration cost, and every deliverable names the partner it integrates. SEP-24/31 anchors are out of scope: no usable SEP EUR anchor was verified (the one EUR anchor found, MYKOBO, has a SEP host that did not resolve on 24 Oct 2026), and Bridge is the ramp. Mercuryo, also on the Integration List, is a fallback only if it enables EURC on Stellar for us: its public currency list on 24 Oct 2026 shows Stellar USDC (on-ramp only) and XLM, no EURC. Otherwise the degraded mode is EURC from the user's own wallet or exchange, with cards beside it.
+**Integration List estimates.**
+
+- Each partner's API work fits inside its estimate (Trustless Work in D1, list: no more than 2 weeks; Bridge in D5, list: 1-5 days; Privy and Wallets Kit in D2, list: under 1 day each; list re-checked live 24-25 Oct 2026).
+- Integrating them into a live marketplace also means changing our checkout, order, escrow-ledger, payout and dispute code so that orders settle through these blocks.
+- Those hours are integration cost, and every deliverable names the partner it integrates.
+- SEP-24/31 anchors are out of scope: no usable SEP EUR anchor was verified (the one EUR anchor found, MYKOBO, has a SEP host that did not resolve on 24 Oct 2026), and Bridge is the ramp.
+- Mercuryo, also on the Integration List, is a fallback only if it enables EURC on Stellar for us: its public currency list on 24 Oct 2026 shows Stellar USDC (on-ramp only) and XLM, no EURC.
+- Otherwise the degraded mode is EURC from the user's own wallet or exchange, with cards beside it.
 
 ## 11. Open partner confirmations (dated)
 
@@ -447,7 +792,13 @@ Open as of filing; each item has a fallback. Items 1 and 2 are our written quest
    - Does the v1 API accept a contract address as `release_signer` and `dispute_resolver`, the same address in both, and does it store a non-empty milestone status? Fallbacks, both tested: deploy through the on-chain deployer; set the status with `update_escrow` before funding.
    - May we deploy Trustless Work's published Wasm through its on-chain deployer (same Wasm, same fees)?
    - v1 support horizon and mainnet API key; mainnet API terms, the split of compliance responsibility and permitted EU consumer use (confirmed before Tranche 2); which version the Runtime Verification audit covered.
-2. **Bridge** (open). Is EUR/SEPA to and from EURC on Stellar enabled for a Lithuanian UAB and its EEA individual buyers (EUR access through Bridge sales and a `sepa` endorsement per customer)? KYB lead time for UAB Motored? Does Bridge credit EURC deposits that arrive as a Soroban token transfer as well as a classic payment (we send classic payments)? How should Travel Rule data and wallet-ownership attestation be passed for our flows? Already answered by Bridge's docs: the sandbox simulates deposits and does not use a testnet, so D5 splits into a sandbox leg and a testnet leg with Circle's testnet EURC; a sandbox developer account is requested through Bridge support; a virtual account needs an approved customer first. Fallback: Mercuryo only if it enables EURC on Stellar; otherwise EURC from the user's own wallet or exchange, and, if Bridge EUR/SEPA on Stellar is not live for us by week 12, we propose pro-rated Tranche 3 thresholds for the wallet-only path at the Tranche 2 review.
+2. **Bridge** (open).
+   - Is EUR/SEPA to and from EURC on Stellar enabled for a Lithuanian UAB and its EEA individual buyers (EUR access through Bridge sales and a `sepa` endorsement per customer)?
+   - KYB lead time for UAB Motored?
+   - Does Bridge credit EURC deposits that arrive as a Soroban token transfer as well as a classic payment (we send classic payments)?
+   - How should Travel Rule data and wallet-ownership attestation be passed for our flows?
+   - Already answered by Bridge's docs: the sandbox simulates deposits and does not use a testnet, so D5 splits into a sandbox leg and a testnet leg with Circle's testnet EURC; a sandbox developer account is requested through Bridge support; a virtual account needs an approved customer first.
+   - Fallback: Mercuryo only if it enables EURC on Stellar; otherwise EURC from the user's own wallet or exchange, and, if Bridge EUR/SEPA on Stellar is not live for us by week 12, we propose pro-rated Tranche 3 thresholds for the wallet-only path at the Tranche 2 review.
 3. **Privy.** No confirmation needed: Privy's docs place gas sponsorship at Tier 3 and Stellar at Tier 2, and we do not depend on it.
 4. **DPD** (Motored-side check). Per destination, a Motored-minted parcel reaching "Delivered" in the authenticated tracking API before that country is enabled for EURC.
 5. **G1 legal opinion** (commissioned in November 2026 at the latest; scope in section 6 and appendix A; target delivery before week 10).
@@ -470,7 +821,14 @@ Open as of filing; each item has a fallback. Items 1 and 2 are our written quest
 
 ### LEGAL, IN FULL (Products & Services carries the two-sentence version)
 
-Under MiCA, e-money tokens such as EURC are e-money, and the EBA advised supervisors that from 2 March 2026 crypto-asset service providers that hold or transfer e-money tokens for clients also need PSD2 authorisation (EBA, https://www.eba.europa.eu/node/18479). We design around it: Motored holds no user keys and never signs a payment from a buyer's or seller's account (it only sponsors reserves and pays network fees); fiat in and out runs through Bridge, and users contract with Bridge directly. Escrowed funds can only go to that escrow's buyer or seller and the two fee recipients the guard pins (Trustless Work's fee account and Motored's platform address). Motored decides disputes between them, and for a buyer who never confirms, Motored can pay the seller 7 days after delivery against the delivery claim; whether that dispute role counts as control of client funds is a question for the legal opinion. Mainnet EURC orders start only after a written opinion from Lithuanian counsel confirms that each role Motored holds (release key, resolver key, the platform's power to open disputes, edit unfunded escrows and append milestones, the buyer refund top-up, creating Bridge customers and virtual accounts by API and passing Travel Rule data, account sponsorship and fee-bumps) needs no authorisation Motored lacks, or after those roles move to a licensed party. The opinion also covers AML obligations, the transfer-of-funds rule and consumer withdrawal. Until then the rail runs on testnet. We pay for the opinion ourselves; it is not in this budget.
+- Under MiCA, e-money tokens such as EURC are e-money, and the EBA advised supervisors that from 2 March 2026 crypto-asset service providers that hold or transfer e-money tokens for clients also need PSD2 authorisation (EBA, https://www.eba.europa.eu/node/18479).
+- We design around it: Motored holds no user keys and never signs a payment from a buyer's or seller's account (it only sponsors reserves and pays network fees); fiat in and out runs through Bridge, and users contract with Bridge directly.
+- Escrowed funds can only go to that escrow's buyer or seller and the two fee recipients the guard pins (Trustless Work's fee account and Motored's platform address).
+- Motored decides disputes between them, and for a buyer who never confirms, Motored can pay the seller 7 days after delivery against the delivery claim; whether that dispute role counts as control of client funds is a question for the legal opinion.
+- Mainnet EURC orders start only after a written opinion from Lithuanian counsel confirms that each role Motored holds (release key, resolver key, the platform's power to open disputes, edit unfunded escrows and append milestones, the buyer refund top-up, creating Bridge customers and virtual accounts by API and passing Travel Rule data, account sponsorship and fee-bumps) needs no authorisation Motored lacks, or after those roles move to a licensed party.
+- The opinion also covers AML obligations, the transfer-of-funds rule and consumer withdrawal.
+- Until then the rail runs on testnet.
+- We pay for the opinion ourselves; it is not in this budget.
 
 ### COMPETITION
 
@@ -488,7 +846,19 @@ Paid marketing is not funded by this award. The award's user-testing allowance (
 
 ### LEGAL OPINION SCOPE (paid by us, outside the budget)
 
-Written opinion from Lithuanian counsel on: PSD2 Annex I and recital 11 (commercial-agent exclusion) for each role Motored holds; MiCA custody and transfer services for EURC; AML obliged-entity status and the transfer-of-funds rule; the buyer refund top-up from Motored's fee account; the platform's power to open disputes, edit unfunded escrows and append milestones; refunds of partly funded escrows; creating Bridge customers and virtual accounts by API and passing Travel Rule data; account sponsorship and fee-bumps; consumer withdrawal on the EURC rail; EU sanctions screening obligations; handling of a Circle freeze.
+Written opinion from Lithuanian counsel on:
+
+- PSD2 Annex I and recital 11 (commercial-agent exclusion) for each role Motored holds;
+- MiCA custody and transfer services for EURC;
+- AML obliged-entity status and the transfer-of-funds rule;
+- the buyer refund top-up from Motored's fee account;
+- the platform's power to open disputes, edit unfunded escrows and append milestones;
+- refunds of partly funded escrows;
+- creating Bridge customers and virtual accounts by API and passing Travel Rule data;
+- account sponsorship and fee-bumps;
+- consumer withdrawal on the EURC rail;
+- EU sanctions screening obligations;
+- handling of a Circle freeze.
 
 ### RISKS WE NAME
 - Legal (PSD2/MiCA). The rail holds no user keys, fiat runs through Bridge, and mainnet waits for the written opinion above. If it requires a licensed resolver, the mainnet guard is deployed with that party as resolver admin and resolver-key holder (a new guard for new escrows if it joins later), onboarded inside D10. If a gate is not met by week 16, we notify SCF and agree a revised window in writing (Official Rules §5.8).
@@ -544,9 +914,15 @@ The tranche fields carry each deliverable's billed scope, cost and pass/fail lin
 
 ### FURTHER DETAIL BEHIND THE SUBMISSION FIELDS
 
-- **Cost per order.** On the average order of about EUR 231: escrow fee about EUR 0.69 (0.3%, absorbed by Motored); EEA card EUR 3.72; international card EUR 7.53 (Stripe list price, stripe.com/en-lt/pricing, 28 Oct 2026). A SEPA payer pays Bridge's ramp fee, which is shown before the user confirms. Network fees per order on testnet: about 0.035 XLM in repo run 4 (28 Oct 2026, all seven escrow steps, itemised in stroops in docs/testnet-proofs.md, Run 4); the highest we observed was about 2.4 XLM in lab run 1 (24 Oct 2026: deploy, fund and release). Plus TTL extensions for escrows open beyond 7 days; reserves are locked, not spent; mainnet fees are not measured yet. Guard v0.9 (run 7) pays 60 days of rent on each first registration: escrow A came to 685,147 stroops (about 0.069 XLM), and the guard deployment to about 10.7 XLM once. Those are testnet figures: on mainnet every new persistent entry starts with the network minimum of about 120 days of rent, paid at creation (each registration, escrow and claim root), and guard v0.10 extends to 150 days; mainnet rent per order is measured in D10.
+- **Cost per order.**
+  - On the average order of about EUR 231: escrow fee about EUR 0.69 (0.3%, absorbed by Motored); EEA card EUR 3.72; international card EUR 7.53 (Stripe list price, stripe.com/en-lt/pricing, 28 Oct 2026).
+  - A SEPA payer pays Bridge's ramp fee, which is shown before the user confirms.
+  - Network fees per order on testnet: about 0.035 XLM in repo run 4 (28 Oct 2026, all seven escrow steps, itemised in stroops in docs/testnet-proofs.md, Run 4); the highest we observed was about 2.4 XLM in lab run 1 (24 Oct 2026: deploy, fund and release).
+  - Plus TTL extensions for escrows open beyond 7 days; reserves are locked, not spent; mainnet fees are not measured yet.
+  - Guard v0.9 (run 7) pays 60 days of rent on each first registration: escrow A came to 685,147 stroops (about 0.069 XLM), and the guard deployment to about 10.7 XLM once.
+  - Those are testnet figures: on mainnet every new persistent entry starts with the network minimum of about 120 days of rent, paid at creation (each registration, escrow and claim root), and guard v0.10 extends to 150 days; mainnet rent per order is measured in D10.
 - **Settlement speed.** A card-paid seller waits for a payout schedule (3 business days by default in Lithuania, Stripe docs); on the EURC escrow the seller is paid in the release transaction itself.
-- **Keys.** Key rotation by the offline guard admin is timelocked; the resolver admin can swap the resolver key at once after a compromise. A funded escrow's amount, roles and fee cannot change. The fee account is Motored's own account and pays refund top-ups and refunds after release; no Motored key can move escrowed funds to anyone but that escrow's buyer or seller and the two fee recipients the guard pins (Trustless Work's fee account and Motored's platform address); the platform fee rate is set at escrow creation and checked against the order by Motored's backend, and the guard refuses any escrow above its cap (500 bps; guard v0.10, pre-award, run 9; the same wording as Products & Services, How it works 4).
+- **Keys.** Key rotation by the offline guard admin is timelocked; the resolver admin can swap the resolver key at once after a compromise. A funded escrow's amount, roles and fee cannot change. The fee account is Motored's own account and pays refund top-ups and refunds after release; no Motored key can move escrowed funds to anyone but that escrow's buyer or seller and the two fee recipients the guard pins (Trustless Work's fee account and Motored's platform address); the platform fee rate is set at escrow creation and checked against the order by Motored's backend, and the guard refuses any escrow above its cap (500 bps in run 9, 1,000 planned for mainnet; guard v0.10, pre-award, run 9; the same wording as Products & Services, How it works 4).
 - **Reach.** Lithuanian supply; we ship to buyers across the EU (our DPD contract prices 25 EU destinations); the first cross-border orders went to Poland (8) and Italy (1), 9 of 181 paid orders to 15 Oct 2026. 14 sellers have shipped orders; over 50 registered sellers (founder-reported, 28 Oct 2026).
 - **Production systems** (Traction and Team, in full): tracking polled every 20 minutes, end-of-day DPD manifests, dispute evidence upload, per-order invoices and a monthly seller commission invoice, DAC7 seller records, a 1,882-node part taxonomy with OEM-code and vehicle search. Run 4 is reproducible with `npm run testnet:keys`, `testnet:deploy` and `testnet:e2e`.
 - **D1.** Fallback deploy path on mainnet only with Trustless Work's written consent. The run log states which path ran and links Trustless Work's confirmation or our dated request.
@@ -556,17 +932,37 @@ The tranche fields carry each deliverable's billed scope, cost and pass/fail lin
 - **D12.** Every U5 issue is closed or ticketed, with before-and-after error screens.
 - **D13.** The canary alerts through the D7 policies; the suite runs on every escrow change.
 - **U1-U5.** U1 recruits cross-border buyers (Poland first) and Lithuanian sellers who already ship on Motored; nothing is tied to on-chain activity. U2 (Lithuanian and English copy) includes a plain-language explanation of who holds the money, when it is released and how a refund works. U3 shows a buyer paying in EURC (wallet or SEPA) and a seller being paid, subtitled in LT and EN. U3 and U4 carry no SDF logo, the Integration Track mandatory disclaimer wherever Stellar or SCF is named (after an award), and no earn or yield framing.
-- **Tranche 3 basis, in full.** Cross-border buyers are 5% of orders (9 of 181), 8 of 9 to Poland, outside the euro area, where a card payment in euros may carry a conversion fee (European Commission, Your Europe). Thresholds: the committed floor, which triggers payment #3, is at least EUR 4,000 released from at least 20 escrows, 12 distinct buyer wallets and 4 sellers paid in EURC, silent-buyer resolutions at most two thirds; the target (not a condition) is EUR 7,000 from 35 escrows, 20 wallets and 6 sellers; the stretch (not a condition) is EUR 15,000 from 70 escrows. Path to the floor and the target: cross-border buyers, then bank-transfer buyers through Bridge SEPA, the U1 participants and at least 8 of the 14 sellers who have shipped (D8). The floor is sized on the current paid-order pace (129 paid orders in 1-15 October, about 8.6 a day) and assumes that eligible orders run through the platform checkout, where EURC is offered. On that basis the floor needs about 5% opt-in (20 of about 390 orders funded in the 45-day funding window, equal to our cross-border share today, 9 of 181 orders; only eligible orders can choose EURC, and D8/U1 measure that share) and the target about 9% (35); escrows funded in the window count if they close within 14 days after it, so late fundings are not lost. Because silent-buyer resolutions count for at most two thirds, a cap set from measured buyer-confirmation behaviour, the floor also needs at least 7 of the 20 escrows released or resolved on the buyer's own approval. All three are assumptions, carried first by cross-border and bank-transfer buyers and any users who ask for a stablecoin option. The handbook has the panel ratify or adjust the metric. Recalibration trigger at the Tranche 2 review: D8/U1 report the measured platform-checkout order volume, the EURC opt-in among eligible orders and the buyer-approval rate; if any is below this basis, we report it and ask SCF in writing to re-base the floor on the measured figures before Tranche 3, and the floor stands unless SCF agrees (the section 10 rule for a late window, written agreement by day 21 after the Tranche 2 payment, applies alongside). The metric measures EURC; Circle's issuer is not in our footprint; a redacted DPD reference per counted escrow is available to the panel on request. Week numbers: 22 build weeks from payment #0; the metric's closing deadline falls no later than week 26 (section 10).
+- **Tranche 3 basis, in full.**
+  - Cross-border buyers are 5% of orders (9 of 181), 8 of 9 to Poland, outside the euro area, where a card payment in euros may carry a conversion fee (European Commission, Your Europe).
+  - Thresholds: the committed floor, which triggers payment #3, is at least EUR 4,000 released from at least 20 escrows, 12 distinct buyer wallets and 4 sellers paid in EURC, silent-buyer resolutions at most two thirds; the target (not a condition) is EUR 7,000 from 35 escrows, 20 wallets and 6 sellers; the stretch (not a condition) is EUR 15,000 from 70 escrows.
+  - Path to the floor and the target: cross-border buyers, then bank-transfer buyers through Bridge SEPA, the U1 participants and at least 8 of the 14 sellers who have shipped (D8).
+  - The floor is sized on the current paid-order pace (129 paid orders in 1-15 October, about 8.6 a day) and assumes that eligible orders run through the platform checkout, where EURC is offered.
+  - On that basis the floor needs about 5% opt-in (20 of about 390 orders funded in the 45-day funding window, equal to our cross-border share today, 9 of 181 orders; only eligible orders can choose EURC, and D8/U1 measure that share) and the target about 9% (35); escrows funded in the window count if they close within 14 days after it, so late fundings are not lost.
+  - Because silent-buyer resolutions count for at most two thirds, a cap set from measured buyer-confirmation behaviour, the floor also needs at least 7 of the 20 escrows released or resolved on the buyer's own approval.
+  - All three are assumptions, carried first by cross-border and bank-transfer buyers and any users who ask for a stablecoin option.
+  - The handbook has the panel ratify or adjust the metric.
+  - Recalibration trigger at the Tranche 2 review: D8/U1 report the measured platform-checkout order volume, the EURC opt-in among eligible orders and the buyer-approval rate; if any is below this basis, we report it and ask SCF in writing to re-base the floor on the measured figures before Tranche 3, and the floor stands unless SCF agrees (the section 10 rule for a late window, written agreement by day 21 after the Tranche 2 payment, applies alongside).
+  - The metric measures EURC; Circle's issuer is not in our footprint; a redacted DPD reference per counted escrow is available to the panel on request.
+  - Week numbers: 22 build weeks from payment #0; the metric's closing deadline falls no later than week 26 (section 10).
 - **Eligibility (field D, in full).** Funding wallet addresses are screened against the EU consolidated financial sanctions list and the OFAC SDN list of digital-currency addresses; buyers and sellers on the Bridge path are identified by Bridge in its KYC and KYB flow; payouts go only to sellers who pass the card rail's seller verification; sanctions and AML obligations under EU law are in the legal opinion's scope. No SDF Matching Fund or Enterprise Fund investment, and no active SDF Marketing, Currency Support or Infrastructure grant overlapping this work.
 
 ### REVENUE MODEL, IN FULL
 Buyers pay a platform fee of 5% of the goods subtotal, capped at EUR 5, plus shipping. Sellers pay a 5% commission, deducted from their payout. Because Trustless Work's contract takes 0.3% on every payout from an escrow, each escrow's platform fee is computed in basis points when the escrow is created, so the EUR 5 cap and the 0.3% escrow fee reconcile to the cent; Motored absorbs the 0.3% so sellers net at least what cards pay, and at most about 1 basis point more. On a refund, Motored tops up the fees Trustless Work deducts, so the buyer gets 100%; Motored's net cost per refunded escrow is the 0.3%.
 
 ### ON-CHAIN VOLUME OUTLOOK, IN FULL (projection, not a commitment)
-Today's pace, from founder-reported totals (15 Oct 2026): 129 paid orders in 1-15 October = 8.6 a day, so 8.6 x 30 = about 258 orders a month. Average order: EUR 41,810 / 181 = about EUR 231. Monthly order value at today's pace: 258 x EUR 231 = about EUR 59,600; the outlook assumes eligible orders run through the platform checkout, where EURC is offered. The outlook assumes no growth beyond that pace, and covers the 6 months after the Tranche 3 window, on mainnet, with cards still offered on every order.
+- Today's pace, from founder-reported totals (15 Oct 2026): 129 paid orders in 1-15 October = 8.6 a day, so 8.6 x 30 = about 258 orders a month.
+- Average order: EUR 41,810 / 181 = about EUR 231.
+- Monthly order value at today's pace: 258 x EUR 231 = about EUR 59,600; the outlook assumes eligible orders run through the platform checkout, where EURC is offered.
+- The outlook assumes no growth beyond that pace, and covers the 6 months after the Tranche 3 window, on mainnet, with cards still offered on every order.
 - Floor, cross-border only (5%, our share today: 9 of 181 orders): about 13 orders and EUR 2,960 a month in EURC; about EUR 17,800 over 6 months.
 - Base, the Tranche 3 basis (9% opt-in): about 23 orders and EUR 5,360 a month; about EUR 32,200 over 6 months, about EUR 64,000 a year.
 - Upside (20% opt-in; an assumption, not measured): about 52 orders and EUR 11,900 a month; about EUR 71,500 over 6 months.
-Each further 10 points of opt-in adds about EUR 5,960 a month at today's pace. Motored's fee revenue settled on-chain, at our stated fees on an average EUR 231 order, is up to about EUR 16.55 an order (an upper bound: the average order may include shipping), so up to about EUR 210 / EUR 380 / EUR 850 a month in the three cases, before the 0.3% we absorb (about EUR 0.69 an order). All three cases fit under the EUR 5,000 open-escrow cap: at about 10 days per escrow, open value averages about EUR 990 / EUR 1,790 / EUR 3,970. The committed Tranche 3 floor, which triggers payment #3, is EUR 4,000 released from 20 escrows funded in a 45-day window and closed within 14 days after it (about the floor case above over 45 days), with a target of EUR 7,000 from 35 escrows (the base case); at about 10 days open per escrow they average about EUR 890 and EUR 1,560 open, under the EUR 5,000 cap. The 5% and 9% opt-in shares are planning assumptions, not measurements: drop-off and willingness to choose EURC are first measured in the D8 and U1 pilot and reported at the Tranche 2 review, with the share of eligible orders, with the measured platform-checkout volume and buyer-approval rate, so the panel can re-ratify the thresholds before mainnet. Volume counts the gross amount leaving the escrow (Motored's platform fee included); the seller-received amount is reported beside it. Shipping is paid to the platform address outside the escrow, so it is not in the counted volume.
+- Each further 10 points of opt-in adds about EUR 5,960 a month at today's pace.
+- Motored's fee revenue settled on-chain, at our stated fees on an average EUR 231 order, is up to about EUR 16.55 an order (an upper bound: the average order may include shipping), so up to about EUR 210 / EUR 380 / EUR 850 a month in the three cases, before the 0.3% we absorb (about EUR 0.69 an order).
+- All three cases fit under the EUR 5,000 open-escrow cap: at about 10 days per escrow, open value averages about EUR 990 / EUR 1,790 / EUR 3,970.
+- The committed Tranche 3 floor, which triggers payment #3, is EUR 4,000 released from 20 escrows funded in a 45-day window and closed within 14 days after it (about the floor case above over 45 days), with a target of EUR 7,000 from 35 escrows (the base case); at about 10 days open per escrow they average about EUR 890 and EUR 1,560 open, under the EUR 5,000 cap.
+- The 5% and 9% opt-in shares are planning assumptions, not measurements: drop-off and willingness to choose EURC are first measured in the D8 and U1 pilot and reported at the Tranche 2 review, with the share of eligible orders, with the measured platform-checkout volume and buyer-approval rate, so the panel can re-ratify the thresholds before mainnet.
+- Volume counts the gross amount leaving the escrow (Motored's platform fee included); the seller-received amount is reported beside it.
+- Shipping is paid to the platform address outside the escrow, so it is not in the counted volume.
 
 Sources: github.com/Trustless-Work/trustlesswork-smart-contract-stellar (single-release-main @6e4d40e: `contract.rs`, `core/escrow.rs`, `core/dispute.rs`, `core/milestone.rs`, `core/validators/escrow.rs`, `core/validators/dispute.rs`, `core/validators/milestone.rs`, `modules/fee/calculator.rs`, `modules/fee/distribution.rs`, `storage/types.rs`; single-release-develop @7257fac); deployed Wasm fetched from testnet and mainnet (`stellar contract fetch`, hashes above); docs.trustlesswork.com (API REST deploy and release endpoints; go-to-mainnet); trustlesswork.com/pricing; developers.circle.com/stablecoins/eurc-contract-addresses; circle.com/eurc; github.com/circlefin/stablecoin-xlm (fiat-token-admin); horizon.stellar.org (EURC asset flags, Trustless Work fee account, fee_stats, 23-24 Oct 2026); docs.privy.io/wallets/overview/chains and recipes/tier-2-wallet-integration#stellar; stellarwalletskit.dev; developers.stellar.org (Stellar Asset Contract, contract accounts, fees, state archival); apidocs.bridge.xyz (payment routes, virtual accounts, supported blockchains, liquidation addresses, sandbox, crypto Travel Rule); bridge.xyz/legal; ESMA MiCA CASP register; api.mercuryo.io/v1.6/lib/currencies; eba.europa.eu/node/18479; Motored's private marketplace backend (payments, payouts, refunds, fees, shipping, disputes, orders and schema); [`contracts/claim-registry/src/lib.rs`](../contracts/claim-registry/src/lib.rs).
