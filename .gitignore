@@ -1,0 +1,27 @@
+# Build output
+target/
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+**/test_snapshots/
+
+# Local secrets and runtime state. Never commit these (scripts/check-secrets.sh enforces it).
+.keys/
+.stellar/
+.env*
+*.secret.json
+*.secret.*
+keys.*.json
+*-keys.json
+*.pem
+testnet-state.json
+
+# Third-party Wasm is fetched by hash (contracts/third_party/tw-wasm/fetch.sh), never vendored
+contracts/third_party/tw-wasm/*.wasm
+
+# Noise
+*.log
+.DS_Store
+.idea/
+.vscode/

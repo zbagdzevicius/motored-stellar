@@ -1,0 +1,29 @@
+motored-stellar
+Copyright 2026 UAB Motored
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Third-party components
+----------------------
+
+Trustless Work single-release escrow (v1)
+  Source: https://github.com/Trustless-Work/trustlesswork-smart-contract-stellar
+  This repository does NOT vendor or redistribute Trustless Work source code or
+  compiled Wasm. contracts/third_party/tw-wasm/fetch.sh downloads the escrow Wasm
+  that Trustless Work has deployed on Stellar testnet and mainnet, identified by
+  its SHA-256 hash, and checks it against contracts/third_party/tw-wasm/SHA256SUMS.
+  The downloaded files are git-ignored and used only by the guard contract tests.
+  Trustless Work code remains under its own license and copyright.
+
+  The guard contract contains a minimal Rust mirror of the public v1 escrow
+  storage types (Escrow, Roles, Milestone, Flags, Trustline) so that it can decode
+  `get_escrow`. Those type definitions describe Trustless Work's on-chain data
+  layout; see the source repository above for the original.
+
+Circle EURC, Bridge, Privy and Stellar Wallets Kit
+  Referenced by public identifiers (asset codes, contract IDs, API names) only.
+  No code from these projects is included. All trademarks belong to their owners.
+
+Stellar SDKs
+  @stellar/stellar-sdk (Apache-2.0) and soroban-sdk (Apache-2.0) are dependencies,
+  installed by npm and cargo, not vendored.

@@ -1,0 +1,29 @@
+{
+  "name": "motored-stellar",
+  "version": "0.8.0",
+  "private": true,
+  "description": "EURC escrow on Stellar for a used car parts marketplace: Trustless Work escrow guard, delivery-claim registry and TypeScript adapters. Testnet only.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "packages/*",
+    "scripts",
+    "examples/*"
+  ],
+  "scripts": {
+    "lint:docs": "node scripts/lint/docs-lint.mjs",
+    "check:secrets": "bash scripts/check-secrets.sh",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run lint:docs && npm test --workspaces --if-present",
+    "example": "npm run example -w @motored-stellar/example-order-flow --",
+    "testnet:keys": "npm run testnet:keys -w @motored-stellar/scripts",
+    "testnet:deploy": "npm run testnet:deploy -w @motored-stellar/scripts",
+    "testnet:e2e": "npm run testnet:e2e -w @motored-stellar/scripts",
+    "testnet:e2e-claims": "npm run testnet:e2e-claims -w @motored-stellar/scripts",
+    "metric": "npm run metric -w @motored-stellar/scripts --",
+    "claims:recheck": "npm run claims:recheck -w @motored-stellar/scripts --"
+  }
+}
