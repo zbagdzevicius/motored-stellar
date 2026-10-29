@@ -1,0 +1,22 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "noImplicitOverride": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "paths": {
+      "@motored-stellar/reconciler": [
+        "../packages/reconciler/src/index.ts"
+      ]
+    }
+  },
+  "include": [
+    "lib/**/*.ts",
+    "testnet/**/*.ts",
+    "metric/**/*.ts",
+    "claims/**/*.ts",
+    "test/**/*.ts",
+    "vitest.config.ts"
+  ]
+}

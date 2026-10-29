@@ -1,0 +1,31 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@motored-stellar/claims": [
+        "../../packages/claims/src/index.ts"
+      ],
+      "@motored-stellar/escrow": [
+        "../../packages/escrow/src/index.ts"
+      ],
+      "@motored-stellar/eurc": [
+        "../../packages/eurc/src/index.ts"
+      ],
+      "@motored-stellar/ramps": [
+        "../../packages/ramps/src/index.ts"
+      ],
+      "@motored-stellar/reconciler": [
+        "../../packages/reconciler/src/index.ts"
+      ],
+      "@motored-stellar/wallets": [
+        "../../packages/wallets/src/index.ts"
+      ]
+    }
+  },
+  "include": [
+    "src/**/*.ts",
+    "test/**/*.ts"
+  ]
+}

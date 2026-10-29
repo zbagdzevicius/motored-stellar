@@ -1,0 +1,31 @@
+{
+  "name": "@motored-stellar/scripts",
+  "version": "0.8.0",
+  "private": true,
+  "description": "Runnable CLIs for the Motored Stellar escrow rail: testnet keys, deploy and end-to-end run, the Tranche 3 on-chain metric and the public delivery-claim re-check.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "testnet:keys": "tsx testnet/keys.ts",
+    "testnet:deploy": "tsx testnet/deploy.ts",
+    "testnet:e2e": "tsx testnet/e2e.ts",
+    "testnet:e2e-claims": "tsx testnet/e2e-claims.ts",
+    "metric": "tsx metric/index.ts",
+    "claims:recheck": "tsx claims/recheck.ts"
+  },
+  "dependencies": {
+    "@motored-stellar/reconciler": "0.8.0",
+    "@stellar/stellar-sdk": "14.6.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}
