@@ -1,9 +1,9 @@
 #![cfg(test)]
-//! Guard v0.8 tests against Trustless Work's DEPLOYED single-release v1 Wasm files:
+//! Guard v0.9 tests against Trustless Work's DEPLOYED single-release v1 Wasm files:
 //!   testnet 7c3f7b2a... (release/resolve/withdraw take trustless_work_address as arg 1)
 //!   mainnet 96d51751... (fee account GBWWSOAT... hardcoded)
-//! Each test in the `lineage!` macro runs for both lineages (modules `tn` and `mn`): 2 x 32 tests,
-//! plus m01 and m02, 66 in total.
+//! Each test in the `lineage!` macro runs for both lineages (modules `tn` and `mn`): 2 x 35 tests,
+//! plus m01, m02 and m03, 73 in total (v0.9 added x08 to x10 and m03, the TTL upkeep tests).
 //!
 //! Prerequisites (see contracts/README.md):
 //!   ./third_party/tw-wasm/fetch.sh     the two Trustless Work Wasm files, verified by SHA-256
@@ -18,7 +18,10 @@ use super::*;
 use ed25519_dalek::{Signer, SigningKey};
 use sha2::{Digest, Sha256};
 use soroban_sdk::{
-    testutils::{Address as _, Ledger},
+    testutils::{
+        storage::{Instance as _, Persistent as _},
+        Address as _, Ledger,
+    },
     token::{StellarAssetClient, TokenClient},
     xdr::{
         self, HashIdPreimage, HashIdPreimageSorobanAuthorization, InvokeContractArgs, Limits,
@@ -82,10 +85,20 @@ pub fn world(wasm: &[u8], fee_arg: bool) -> W {
     world_opts(wasm, fee_arg, false)
 }
 pub fn world_opts(wasm: &[u8], fee_arg: bool, wasm_guard: bool) -> W {
+    world_ttl(wasm, fee_arg, wasm_guard, None)
+}
+/// Long-lived world for the TTL tests: every entry is created with `min_persistent` ledgers of
+/// TTL, so a test can advance the ledger sequence by hundreds of thousands of ledgers (to bring
+/// the guard's entries under `TTL_THRESHOLD`) without archiving the escrow, the token or the
+/// registry.
+pub fn world_ttl(wasm: &[u8], fee_arg: bool, wasm_guard: bool, min_persistent: Option<u32>) -> W {
     let env = Env::default();
     env.ledger().with_mut(|l| {
         l.timestamp = 1_800_000_000;
         l.sequence_number = 1000;
+        if let Some(m) = min_persistent {
+            l.min_persistent_entry_ttl = m;
+        }
     });
     env.cost_estimate().budget().reset_unlimited();
     env.mock_all_auths();
@@ -220,6 +233,27 @@ impl W {
     }
     pub fn reg_of(&self) -> Reg {
         self.guardc().registration(&self.escrow).unwrap()
+    }
+    /// Remaining TTL, in ledgers, of this escrow's registration entry in the guard.
+    pub fn reg_ttl(&self) -> u32 {
+        self.env.as_contract(&self.guard, || {
+            self.env
+                .storage()
+                .persistent()
+                .get_ttl(&DK::Esc(self.escrow.clone()))
+        })
+    }
+    /// Remaining TTL, in ledgers, of the guard's contract instance.
+    pub fn guard_instance_ttl(&self) -> u32 {
+        self.env
+            .as_contract(&self.guard, || self.env.storage().instance().get_ttl())
+    }
+    /// Advances the ledger by `ledgers` sequence numbers (5 s each).
+    pub fn advance_ledgers(&self, ledgers: u32) {
+        self.env.ledger().with_mut(|l| {
+            l.sequence_number += ledgers;
+            l.timestamp += ledgers as u64 * 5;
+        });
     }
     /// Sends `amt` of the token to the escrow from a third party (plain SAC transfer, not fund_escrow).
     pub fn dust(&self, amt: i128) {
@@ -384,6 +418,15 @@ mod $m {
         w
     }
     pub fn setup() -> W { setup_status("awaiting delivery") }
+    /// Every entry created with TTL_LONG, so the TTL tests can age the ledger.
+    pub fn setup_long_lived() -> W {
+        let w = world_ttl($wasm, $fee_arg, false, Some(TTL_LONG));
+        if !$fee_arg { give_gbww_trustline(&w); }
+        w.env.mock_all_auths();
+        let p = props(&w, "awaiting delivery", &w.token);
+        twc::Client::new(&w.env, &w.escrow).initialize_escrow(&p);
+        w
+    }
     pub fn tw(w: &W) -> twc::Client<'_> { twc::Client::new(&w.env, &w.escrow) }
     pub fn fund(w: &W, amt: i128) -> bool {
         w.mint(&w.buyer, amt); w.env.mock_all_auths();
@@ -1042,9 +1085,78 @@ mod $m {
         assert!(w.guardc().registration(&fake).is_none());
     }
 
+    // ------------------------------------------------- v0.9 TTL upkeep
+    #[test]
+    fn x08_ttl_register_escrow_extends_registration_and_instance() {
+        let w = setup_long_lived();
+        assert!(fund(&w, AMT)); assert!(w.register());
+        // fresh entries sit above the threshold: the extension is a no-op and never shortens a TTL
+        let (r0, i0) = (w.reg_ttl(), w.guard_instance_ttl());
+        assert!(r0 > TTL_EXTEND_TO && i0 > TTL_EXTEND_TO);
+        assert!(w.register());
+        assert_eq!((w.reg_ttl(), w.guard_instance_ttl()), (r0, i0));
+        // age the ledger until both entries are under the threshold
+        w.advance_ledgers(TTL_LONG - TTL_THRESHOLD + 1_000);
+        let (r1, i1) = (w.reg_ttl(), w.guard_instance_ttl());
+        assert!(r1 < TTL_THRESHOLD && i1 < TTL_THRESHOLD);
+        // read-only views do not extend (they run by simulation)
+        assert!(w.guardc().registration(&w.escrow).is_some());
+        assert_eq!((w.reg_ttl(), w.guard_instance_ttl()), (r1, i1));
+        // permissionless register_escrow tops both up to TTL_EXTEND_TO
+        assert!(w.register());
+        println!("[{}] register_escrow TTL upkeep: reg {} -> {}, instance {} -> {}", stringify!($m), r1, w.reg_ttl(), i1, w.guard_instance_ttl());
+        assert_eq!(w.reg_ttl(), TTL_EXTEND_TO);
+        assert_eq!(w.guard_instance_ttl(), TTL_EXTEND_TO);
+    }
+
+    #[test]
+    fn x09_ttl_check_auth_extends_only_with_an_authorized_call() {
+        let w = setup_long_lived();
+        assert!(fund(&w, AMT)); assert!(w.register()); assert!(ship_and_approve(&w));
+        w.advance_ledgers(TTL_LONG - TTL_THRESHOLD + 1_000);
+        let (r0, i0) = (w.reg_ttl(), w.guard_instance_ttl());
+        assert!(r0 < TTL_THRESHOLD && i0 < TTL_THRESHOLD);
+        // a refused authorization (wrong key) fails the call: the extension is rolled back with it
+        assert!(!release(&w, K_REL, &w.k_res, true));
+        assert_eq!((w.reg_ttl(), w.guard_instance_ttl()), (r0, i0));
+        // the authorized release extends both and the rules are unchanged (closed after release)
+        assert!(release(&w, K_REL, &w.k_rel, true));
+        assert_eq!(w.reg_ttl(), TTL_EXTEND_TO);
+        assert_eq!(w.guard_instance_ttl(), TTL_EXTEND_TO);
+        assert!(w.reg_of().closed);
+    }
+
+    #[test]
+    fn x10_ttl_contest_and_withdraw_paths_extend_the_registration() {
+        // contest (buyer-signed) on an aged registration
+        let w = setup_long_lived();
+        assert!(fund(&w, AMT)); assert!(w.register());
+        w.advance_ledgers(TTL_LONG - TTL_THRESHOLD + 1_000);
+        assert!(w.reg_ttl() < TTL_THRESHOLD);
+        assert!(w.contest());
+        assert_eq!(w.reg_ttl(), TTL_EXTEND_TO);
+        assert_eq!(w.guard_instance_ttl(), TTL_EXTEND_TO);
+        assert!(w.reg_of().contested_at.is_some());
+        // withdraw_remaining_funds reads Reg without writing it: still extended
+        let w = setup_long_lived();
+        assert!(fund(&w, AMT)); assert!(w.register());
+        assert!(dispute(&w, &w.platform));
+        w.advance_ledgers(TTL_LONG - TTL_THRESHOLD + 1_000);
+        assert!(w.reg_ttl() < TTL_THRESHOLD);
+        let mut db = Map::new(&w.env); db.set(w.buyer.clone(), AMT / 10);
+        assert!(resolve(&w, "withdraw_remaining_funds", &db, K_RES, &w.k_res, None, true));
+        assert_eq!(w.reg_ttl(), TTL_EXTEND_TO);
+        assert_eq!(w.guard_instance_ttl(), TTL_EXTEND_TO);
+        assert!(!w.reg_of().closed, "withdraw_remaining_funds never closes the registration");
+    }
+
 }
     };
 }
+
+/// Initial TTL of every entry in the long-lived TTL test world (under the test ledger's
+/// 6,312,000-ledger maximum, above `TTL_EXTEND_TO`).
+pub const TTL_LONG: u32 = 3_000_000;
 
 pub type R = Result<(), std::string::String>;
 pub fn ok<T: core::fmt::Debug>(r: T, okp: bool) -> R {
@@ -1312,4 +1424,63 @@ fn m02_metering_wasm_guard_depth32_seller_resolution_and_release() {
         );
         assert!(w.bal(&w.seller) > 0);
     }
+}
+
+/// v0.9 TTL upkeep on the built Wasm guard (the artifact that is deployed), testnet lineage:
+/// `register_escrow` on an aged registration extends it and the instance to `TTL_EXTEND_TO`.
+#[test]
+fn m03_wasm_guard_ttl_upkeep() {
+    let w = world_ttl(TN_WASM, true, true, Some(TTL_LONG));
+    w.env.mock_all_auths();
+    let tw = tnc::Client::new(&w.env, &w.escrow);
+    let mut ms = soroban_sdk::Vec::new(&w.env);
+    ms.push_back(tnc::Milestone {
+        description: SStr::from_str(&w.env, "p"),
+        status: SStr::from_str(&w.env, "awaiting delivery"),
+        evidence: SStr::from_str(&w.env, ""),
+        approved: false,
+    });
+    tw.initialize_escrow(&tnc::Escrow {
+        engagement_id: SStr::from_str(&w.env, "r"),
+        title: SStr::from_str(&w.env, "t"),
+        description: SStr::from_str(&w.env, "d"),
+        roles: tnc::Roles {
+            approver: w.buyer.clone(),
+            service_provider: w.seller.clone(),
+            platform: w.platform.clone(),
+            release_signer: w.guard.clone(),
+            dispute_resolver: w.guard.clone(),
+            receiver: w.seller.clone(),
+        },
+        amount: AMT,
+        platform_fee: PFEE,
+        milestones: ms,
+        flags: tnc::Flags {
+            disputed: false,
+            released: false,
+            resolved: false,
+        },
+        trustline: tnc::Trustline {
+            address: w.token.clone(),
+        },
+        receiver_memo: 0,
+    });
+    w.mint(&w.buyer, AMT);
+    w.env.mock_all_auths();
+    let e = tw.get_escrow();
+    tw.fund_escrow(&w.buyer, &e, &AMT);
+    assert!(w.register());
+    w.advance_ledgers(TTL_LONG - TTL_THRESHOLD + 1_000);
+    let (r0, i0) = (w.reg_ttl(), w.guard_instance_ttl());
+    assert!(r0 < TTL_THRESHOLD && i0 < TTL_THRESHOLD);
+    assert!(w.register());
+    println!(
+        "[m03] Wasm guard register_escrow TTL upkeep: reg {} -> {}, instance {} -> {}",
+        r0,
+        w.reg_ttl(),
+        i0,
+        w.guard_instance_ttl()
+    );
+    assert_eq!(w.reg_ttl(), TTL_EXTEND_TO);
+    assert_eq!(w.guard_instance_ttl(), TTL_EXTEND_TO);
 }
