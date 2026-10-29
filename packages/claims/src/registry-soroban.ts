@@ -1,8 +1,8 @@
 // RegistryClient over Soroban RPC. Reads (verify, anchored_at) are simulations from a
 // random throwaway source: nothing is signed or sent. Writes (anchor, revoke) are
 // built, simulated, assembled, signed through the Signer port and sent through the
-// Submitter port. Ported from the lab scripts (anchor call, send loop) and the Open
-// Part Passport verifier (read-only simulation).
+// Submitter port. Ported from the lab scripts (anchor call, send loop) and an
+// earlier read-only verifier (simulation only).
 import {
   Account,
   BASE_FEE,
