@@ -1,5 +1,5 @@
 /**
- * npm run testnet:refusals
+ * npm run testnet:refusals [-- --amount 2]
  *
  * TESTNET ONLY (refuses any other network, statically and by asking the RPC).
  * Lands the guard's refusals on the ledger as FAILED transactions, so each one
@@ -27,11 +27,12 @@
  *
  * Exports the run log (public tx hashes only) to scripts/out/refusals-*.json.
  */
+import { parseArgs } from 'node:util';
 import { consoleOut, isMain, runMain, type Out } from '../lib/cli.js';
 import { FileKeyStore, type KeyStore } from '../lib/keystore.js';
 import { addr, distributions, u32 } from '../lib/scval.js';
 import { isRefusal, isTx, type LandedRefusal, type Refusal } from '../lib/soroban.js';
-import { AMT, openOrderKit } from './order-kit.js';
+import { openOrderKit } from './order-kit.js';
 import { contestSetup } from './e2e-claims.js';
 
 export interface RefusalSummary {
@@ -49,9 +50,10 @@ export function summarize(r: LandedRefusal | Refusal, expectedCode: number): Ref
   return { label: r.label, expectedCode, status: r.status, link: r.link, errors: r.errors ?? [], confirmed: r.confirmed };
 }
 
-export async function main(_argv: string[] = process.argv.slice(2), store: KeyStore = new FileKeyStore(), out: Out = consoleOut): Promise<number> {
-  const k = await openOrderKit(store, out);
-  const { chain, st, SUB, keys: K, BUYER, PLATFORM, B, S, fee, wrongFee, g, bal, newEscrow, fund, register, guarded, topUp, must } = k;
+export async function main(argv: string[] = process.argv.slice(2), store: KeyStore = new FileKeyStore(), out: Out = consoleOut): Promise<number> {
+  const { values } = parseArgs({ args: argv, options: { amount: { type: 'string' } } });
+  const k = await openOrderKit(store, out, { amount: values.amount, script: 'refusals' });
+  const { chain, st, amt: AMT, SUB, keys: K, BUYER, PLATFORM, B, S, fee, wrongFee, g, bal, newEscrow, fund, register, guarded, topUp, must } = k;
   out.log(`\n#### refusals ${new Date().toISOString()} guard=${st.guard} registry=${st.registry} sac=${st.sac} tw=${st.twDeployer}`);
   const results: RefusalSummary[] = [];
   const settled: Record<string, boolean> = {};

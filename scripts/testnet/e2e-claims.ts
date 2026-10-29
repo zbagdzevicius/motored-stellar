@@ -1,5 +1,5 @@
 /**
- * npm run testnet:e2e-claims
+ * npm run testnet:e2e-claims [-- --amount 2]
  *
  * TESTNET ONLY (refuses any other network, statically and by asking the RPC).
  * The two claim-and-contest flows, against Trustless Work's testnet Wasm with the
@@ -22,6 +22,7 @@
  * (public tx hashes only) to scripts/out/.
  */
 import { createHash } from 'node:crypto';
+import { parseArgs } from 'node:util';
 import { claimToFile, type AnchoredClaim } from '../lib/claims.js';
 import { consoleOut, isMain, runMain, type Out } from '../lib/cli.js';
 import { FileKeyStore, type KeyStore } from '../lib/keystore.js';
@@ -30,7 +31,7 @@ import { isRefusal, isTx } from '../lib/soroban.js';
 import { writeState } from '../lib/state.js';
 import { recheckClaim, type RecheckResult } from '../claims/recheck-core.js';
 import { RpcGuard, RpcRegistry } from '../claims/rpc-readers.js';
-import { AMT, openOrderKit, sleep, type OrderKit } from './order-kit.js';
+import { openOrderKit, sleep, type OrderKit } from './order-kit.js';
 
 /** Proof depth for the silent-buyer claim: the registry's maximum. */
 export const SILENT_BUYER_PROOF_DEPTH = 32;
@@ -62,12 +63,12 @@ export interface SilentBuyerOrder {
 /** D, before the delay: escrow funded, platform dispute, depth-32 claim anchored, early paths refused. */
 export async function silentBuyerSetup(k: OrderKit): Promise<SilentBuyerOrder> {
   const { chain, g, fee, keys: K, S } = k;
-  const D = await k.newEscrow('D', AMT);
-  await k.fund('D', D, AMT);
+  const D = await k.newEscrow('D', k.amt);
+  await k.fund('D', D, k.amt);
   await k.register('D (funded_at)', D);
   await k.must('D: platform dispute_escrow (buyer stays silent)', k.PLATFORM, D, 'dispute_escrow', [addr(k.PLATFORM.publicKey())]);
   await k.register('D (records dispute)', D);
-  const dist = distributions([[S, AMT]]);
+  const dist = distributions([[S, k.amt]]);
   await k.guarded('D seller payout without a claim (guard NoClaim=8)', D, 'resolve_dispute', [g, fee, dist], K.resolver, { kind: 'Resolve' }, false);
   const claim = await k.anchorClaim('D', D, SILENT_BUYER_PROOF_DEPTH);
   const readyAt = nowS() + k.st.guardConfig.delay;
@@ -81,7 +82,7 @@ export async function silentBuyerSetup(k: OrderKit): Promise<SilentBuyerOrder> {
 /** D, after the delay: the guard pays the seller against the anchored claim; then the public re-check. */
 export async function silentBuyerPayout(k: OrderKit, d: SilentBuyerOrder): Promise<{ landed: boolean; check: RecheckResult }> {
   const { chain, g, fee, keys: K, S } = k;
-  const dist = distributions([[S, AMT]]);
+  const dist = distributions([[S, k.amt]]);
   const s0 = await k.bal(S);
   let r = await k.guarded('D seller payout against the anchored depth-32 claim', d.escrow, 'resolve_dispute', [g, fee, dist], K.resolver, { kind: 'ResolveSeller', claim: d.claim }, true);
   for (let i = 0; i < EARLY_RETRIES && refusedWith(r, 10); i++) {
@@ -105,9 +106,9 @@ export interface ContestOrder {
 /** E, inside the window: approval and dispute recorded, then the buyer contests on the guard. */
 export async function contestSetup(k: OrderKit): Promise<ContestOrder> {
   const { chain, B, S } = k;
-  const E = await k.newEscrow('E', AMT);
-  const buyerBefore = (await k.bal(B)) - AMT;
-  await k.fund('E', E, AMT);
+  const E = await k.newEscrow('E', k.amt);
+  const buyerBefore = (await k.bal(B)) - k.amt;
+  await k.fund('E', E, k.amt);
   await k.register('E (funded_at)', E);
   await k.must('E: buyer approve_milestone', k.BUYER, E, 'approve_milestone', [u32(0), addr(B)]);
   await k.register('E (records approval)', E);
@@ -123,16 +124,17 @@ export async function contestSetup(k: OrderKit): Promise<ContestOrder> {
 /** E, after the window: claimless seller payout refused, whole balance refunded to the buyer, fees topped up. */
 export async function contestFinish(k: OrderKit, e: ContestOrder): Promise<{ refused: boolean; refunded: boolean }> {
   const { g, fee, keys: K, B, S } = k;
-  const sellerTry = await k.guarded('E seller payout after the window, contested (guard Contested=25)', e.escrow, 'resolve_dispute', [g, fee, distributions([[S, AMT]])], K.resolver, { kind: 'Resolve' }, false);
+  const sellerTry = await k.guarded('E seller payout after the window, contested (guard Contested=25)', e.escrow, 'resolve_dispute', [g, fee, distributions([[S, k.amt]])], K.resolver, { kind: 'Resolve' }, false);
   const balE = await k.bal(e.escrow);
   const r = await k.guarded('E resolve_dispute: whole balance to the buyer', e.escrow, 'resolve_dispute', [g, fee, distributions([[B, balE]])], K.resolver, { kind: 'Resolve' }, true);
   const refunded = isTx(r) && r.status === 'SUCCESS';
-  if (refunded) await k.topUp('E', AMT, e.buyerBefore);
+  if (refunded) await k.topUp('E', k.amt, e.buyerBefore);
   return { refused: refusedWith(sellerTry, 25), refunded };
 }
 
-export async function main(_argv: string[] = process.argv.slice(2), store: KeyStore = new FileKeyStore(), out: Out = consoleOut): Promise<number> {
-  const k = await openOrderKit(store, out);
+export async function main(argv: string[] = process.argv.slice(2), store: KeyStore = new FileKeyStore(), out: Out = consoleOut): Promise<number> {
+  const { values } = parseArgs({ args: argv, options: { amount: { type: 'string' } } });
+  const k = await openOrderKit(store, out, { amount: values.amount, script: 'e2e-claims' });
   const { chain, st } = k;
   out.log(`\n#### e2e-claims ${new Date().toISOString()} guard=${st.guard} registry=${st.registry} sac=${st.sac} tw=${st.twDeployer}`);
 

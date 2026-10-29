@@ -1,5 +1,8 @@
 /**
- * npm run testnet:e2e [-- --silent-buyer]
+ * npm run testnet:e2e [-- --silent-buyer] [-- --amount 2]
+ *
+ * `--amount` is the per-order amount (default: testnet-state.json's orderAmount, else 100).
+ * The buyer must hold about twice that (three times with --silent-buyer); see BUYER_BUDGET.
  *
  * TESTNET ONLY (refuses any other network, statically and by asking the RPC).
  * Runs real orders against Trustless Work's testnet Wasm with the guard holding
@@ -34,15 +37,15 @@ import { addr, distributions, u32 } from '../lib/scval.js';
 import { writeState } from '../lib/state.js';
 import { recheckClaim } from '../claims/recheck-core.js';
 import { RpcGuard, RpcRegistry } from '../claims/rpc-readers.js';
-import { AMT, openOrderKit, sleep } from './order-kit.js';
+import { openOrderKit, sleep } from './order-kit.js';
 import { secondsToWait, silentBuyerPayout, silentBuyerSetup } from './e2e-claims.js';
 
 export { MockDeliveryOracle, toAmountString, type DeliveredEvent, type DeliveryOracle } from './order-kit.js';
 
 export async function main(argv: string[] = process.argv.slice(2), store: KeyStore = new FileKeyStore(), out: Out = consoleOut): Promise<number> {
-  const { values } = parseArgs({ args: argv, options: { 'silent-buyer': { type: 'boolean', default: false } } });
-  const k = await openOrderKit(store, out);
-  const { chain, st, src, keys: K, BUYER, PLATFORM, B, S, fee, wrongFee, g, bal, newEscrow, fund, register, guarded, anchorClaim, topUp } = k;
+  const { values } = parseArgs({ args: argv, options: { 'silent-buyer': { type: 'boolean', default: false }, amount: { type: 'string' } } });
+  const k = await openOrderKit(store, out, { amount: values.amount, script: values['silent-buyer'] ? 'e2e --silent-buyer' : 'e2e' });
+  const { chain, st, src, amt: AMT, keys: K, BUYER, PLATFORM, B, S, fee, wrongFee, g, bal, newEscrow, fund, register, guarded, anchorClaim, topUp } = k;
 
   out.log(`\n#### e2e ${new Date().toISOString()} guard=${st.guard} registry=${st.registry} sac=${st.sac} tw=${st.twDeployer}`);
 
