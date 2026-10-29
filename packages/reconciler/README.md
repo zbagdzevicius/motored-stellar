@@ -18,9 +18,9 @@ The package also exports `computeMetric()`, the pure computation behind
 
 | Deliverable | What this package provides |
 |---|---|
-| D3b escrow ledger, D7 reconciliation | The reconciliation rule (run every 15 minutes on testnet escrows in D7): fee legs predicted with Trustless Work's own arithmetic (`tw-math.ts`), rounding in the recipient's favour predicted exactly, refund top-ups on their own line |
-| D7 monitoring | Alert hooks: every P1/P2 finding goes to `ReportSink.alert` (stuck or reverted exits, reconciliation gaps, transfers out of escrows with no matching record, fee-account trustlines, frozen balances, caps) |
-| D12 rollout | The named failure states, the 15-minute reconciliation in production, the daily pass/fail report and the metric computation |
+| Reconciliation (Motored-funded, not billed since the 29 Oct 2026 budget cut) | The reconciliation rule (run every 15 minutes on testnet escrows): fee legs predicted with Trustless Work's own arithmetic (`tw-math.ts`), rounding in the recipient's favour predicted exactly, refund top-ups on their own line |
+| D7 monitoring plan (policies run by Motored) | Alert hooks: every P1/P2 finding goes to `ReportSink.alert` (stuck or reverted exits, reconciliation gaps, transfers out of escrows with no matching record, fee-account trustlines, frozen balances, caps) |
+| D12 rollout | The named failure states (billed); the 15-minute reconciliation in production, the daily pass/fail report and the metric computation (Motored-funded, not billed, still run and published) |
 
 ## Ports
 

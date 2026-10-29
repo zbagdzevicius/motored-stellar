@@ -106,7 +106,7 @@ guard joins the footprint only with SCF's written acknowledgement.
    (`ResolveSeller`).
 
 RPC keeps events for a limited window only, so a full recompute reads from an archive (SDF's Hubble
-dataset, once an adapter exists) or from the weekly signed snapshots the platform will publish from the first mainnet escrow (D12); the
+dataset, once an adapter exists) or from the weekly signed snapshots the platform will publish from the first mainnet escrow (at Motored's own cost, not billed to SCF); the
 script takes an `EventSource` port for that reason. The RPC collector refuses a start ledger older
 than the RPC's oldest ledger rather than silently undercounting.
 
