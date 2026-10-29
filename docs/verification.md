@@ -14,6 +14,10 @@ Run 5, 28 Oct 2026, 22:08 to 22:11 UTC, used the same deployment for the silent-
 against a delivery claim with a 32-level proof (seller resolution 4,955,849 CPU instructions in
 enforce-mode simulation) and the buyer contest followed by a full refund; every tx is in
 [testnet-proofs.md](testnet-proofs.md#run-5-silent-buyer-and-buyer-contest-from-this-repositorys-scripts-28-oct-2026-2208-to-2211-utc).
+Run 7, 29 Oct 2026, 09:27 to 09:35 UTC, deployed guard v0.9 (v0.8 rules plus in-contract TTL
+upkeep, optimised Wasm sha256 `f53d1ece92fcc29f822aac45a720f4b112a0cdd637e22bf3185cc1ae23c4d0d1`) and
+re-ran the run 4 and run 5 scenarios on it; the extended TTLs were read back from the ledger
+([testnet-proofs.md](testnet-proofs.md#run-7-guard-v09-with-ttl-upkeep-29-oct-2026-0927-to-0935-utc)).
 
 ## Test runs of this repository
 
@@ -22,12 +26,27 @@ enforce-mode simulation) and the buyer contest followed by a full refund; every 
 | 27 Oct 2026 | Local (not CI) | `cargo test`: 76 passed (guard 68, claim registry 8); vitest: 382 passed across the workspaces; typecheck clean; the in-memory example ran |
 | 29 Oct 2026 | Local (not CI) | vitest: 388 passed across the workspaces (adds the run-5 helpers and the depth-32 proof builder); docs lint clean; scripts typecheck clean |
 | 29 Oct 2026 | GitHub Actions | First run on push of the published history, 29 Oct 2026: all four jobs green (contracts, TypeScript on Node 20 and 22, secrets and lint): https://github.com/zbagdzevicius/motored-stellar/actions/runs/40831236550 . Every later push runs the same workflow: https://github.com/zbagdzevicius/motored-stellar/actions |
-| 29 Oct 2026 | GitHub Actions | Run at tag `pre-award-filing` (commit `2093a3b`), all four jobs green (contracts, TypeScript on Node 22 and 24, secrets and lint): `cargo test` 76 passed (guard 68, claim registry 8); vitest 393 passed across the eight workspaces, identical on Node 22 and 24: https://github.com/zbagdzevicius/motored-stellar/actions/runs/40839759344 . The README quotes this row. |
+| 29 Oct 2026 | GitHub Actions | Run at tag `pre-award-filing` as first set, before guard v0.9, all four jobs green (contracts, TypeScript on Node 22 and 24, secrets and lint): `cargo test` 76 passed (guard 68, claim registry 8); vitest 393 passed across the eight workspaces, identical on Node 22 and 24: https://github.com/zbagdzevicius/motored-stellar/actions/runs/40839759344 . |
+| 29 Oct 2026 | Local (not CI), guard v0.9 | `cargo test`: 83 passed (guard 75: 73 rule and TTL tests plus 2 leaf golden-vector tests; claim registry 8); vitest: 396 passed across the eight workspaces (adds the metric collector paging tests); typecheck clean; docs lint clean; `check-secrets` OK; `stellar contract build` and `optimize`: guard v0.9 `f53d1ece...` |
+| 29 Oct 2026 | Local (not CI), repo finalize, version 0.9.0 | `cargo test`: 83 passed (guard 75, claim registry 8); vitest: 410 passed across the eight workspaces (claims 35, escrow 73, eurc 67, ramps 56, reconciler 55, wallets 61, scripts 55, example 8; adds the CAP-71 V2 auth-entry tests in `packages/escrow` and `packages/wallets`, the V2 fee-bump refusals in `packages/eurc` and the getTransfers paging tests in `packages/reconciler`); typecheck clean; docs lint clean; `check-secrets` OK; `stellar contract build` and `optimize` at workspace version 0.9.0: guard `c3fe2055...` (see the note under Guard v0.9 below). The README quotes this row; the CI run on the v0.9 commit is added here when it is green. |
+| 29 Oct 2026 | Testnet, `npm run metric` | Run against the real escrows of runs 4 to 6 and of run 7: VERDICT FAIL (exit 3) on both, as expected for test volumes (300.0000000 over 3 escrows; 200.0000000 over 2 escrows); see [Re-run over runs 4 to 7](#re-run-over-runs-4-to-7-29-oct-2026-after-run-7) |
 
-Tag `pre-award-filing` (commit `2093a3b`) marks the code at filing, and the CI row above is pinned to it.
+Tag `pre-award-filing` marks the code at filing: the commit the tag pre-award-filing points to (see `git show pre-award-filing`).
 Commits after the tag change documentation, code comments, the Dependabot config and the published run logs in
 [`docs/runs/`](runs/) only; no contract, package or script logic changes
 (`git diff pre-award-filing -- contracts packages scripts` shows comment and README lines only).
+That held until the guard v0.9 change set of 29 Oct 2026 (run 7), which changes logic in three
+places: the guard contract (in-contract TTL upkeep, no rule change, new tests `x08`-`x10` and
+`m03`), `scripts/lib/soroban.ts` (signs the V2 address credentials testnet RPC now returns) and
+`scripts/metric/collect.ts` (event paging past short pages, new tests in
+`scripts/test/collect.test.ts`). The repo finalize of the same day adds three package logic changes:
+`packages/escrow/src/guard-auth.ts` and `packages/wallets/src/raw-signature.ts` sign the V2 (CAP-71)
+address credentials as well as the legacy ones, keeping the variant they arrive in; and
+`packages/reconciler/src/adapters/rpc.ts` pages `getTransfers` past short pages with the same rule
+as the metric collector. The fee-bump policy in `packages/eurc` is unchanged: it sponsors only calls
+whose auth entries all use source-account credentials, so it refuses V2 address entries exactly as it
+refuses legacy ones (new tests). Other package changes in the set are comments only (resolved or
+deliverable-tagged `TODO(verify)` markers).
 
 ## On-chain metric, dry run on testnet (29 Oct 2026)
 
@@ -61,6 +80,33 @@ ignored; every escrow passes the footprint checks (token, platform, guard as bot
 transfer events decoded with the four-topic shape the collector expects. These are test escrows
 and would be listed as excluded in the registered mainnet footprint.
 
+### Re-run over runs 4 to 7 (29 Oct 2026, after run 7)
+
+`npm run metric` against live testnet RPC, one footprint per deployment (a footprint names one
+guard, and run 7 deployed a new one): runs 4 to 6 (guard `CBYWR2P3...Y467EX`, nine escrows: the
+five above plus run 6's A, B, C, E) and run 7 (guard v0.9 `CBNODLOP...AJKX6`, six escrows: A to E
+and the aborted A0). Footprints, saved observations and the captured output:
+[`runs/metric-footprint-runs-4-6.json`](runs/metric-footprint-runs-4-6.json),
+[`runs/metric-observations-runs-4-6.json`](runs/metric-observations-runs-4-6.json),
+[`runs/metric-output-runs-4-6.txt`](runs/metric-output-runs-4-6.txt),
+[`runs/metric-footprint-run-7.json`](runs/metric-footprint-run-7.json),
+[`runs/metric-observations-run-7.json`](runs/metric-observations-run-7.json),
+[`runs/metric-output-run-7.txt`](runs/metric-output-run-7.txt).
+
+| Footprint | Counted (volume) | Refunds ignored | Not counted | Verdict |
+|---|---|---|---|---|
+| Runs 4 to 6 | 3 escrows, 300 XEUR: run 4 A (release), run 5 D (silent buyer), run 6 A (release) | 6 | none | FAIL (exit 3), expected on testnet volumes |
+| Run 7 | 2 escrows, 200 XEUR: A (release), D (silent buyer) | 3 | A0 (funded and approved, never settled) | FAIL (exit 3), expected on testnet volumes |
+
+Both runs report 1 distinct buyer and 1 distinct seller (one key set) and 0 escrows dropped by the
+footprint checks. The first attempt at the runs 4 to 6 footprint reported run 6's four escrows as
+"never funded": the collector stopped paging at the first page shorter than its limit, but the RPC
+scans a bounded ledger range per request (the first page from ledger 5431300 held 23 transfers and
+ended near ledger 5441300; run 6 is at ledgers 5446746 and later). `scripts/metric/collect.ts`
+now pages until the cursor stops moving or reaches the RPC's latest ledger (unit test
+`scripts/test/collect.test.ts`), and the output above is from the fixed collector. The dry run
+above (runs 4 and 5 only) was not affected: all its transfers were on the first page.
+
 ## Unit tests against Trustless Work's deployed Wasm
 
 | Guard version | Result | Notes |
@@ -68,6 +114,7 @@ and would be listed as excluded in the registered mainnet footprint.
 | v0.6 | 30 passed, 0 failed | Both Trustless Work Wasm lineages |
 | v0.7 | 52 passed, 0 failed | 25 lineage tests x 2 Wasm files + `m01` + `m02` |
 | v0.8 | 66 passed, 0 failed | 32 lineage tests (`t01`-`t25`, `x01`-`x07`) x 2 Wasm files + `m01` + `m02` |
+| v0.9 | 73 passed, 0 failed (29 Oct 2026, local) | 35 lineage tests (adds `x08`-`x10`, TTL upkeep) x 2 Wasm files + `m01` + `m02` + `m03` (TTL upkeep on the built Wasm); plus the 2 leaf golden-vector tests, 75 in the guard crate |
 
 Trustless Work Wasm: testnet `7c3f7b2af92ad86092708b23babf80f9e1308d7f3ce18b703b9499192ecc934b`,
 mainnet `96d51751f924c938a081deb740056dc1c5cc60c6e645672062531f82957ed2fe`
@@ -85,6 +132,21 @@ Key results:
   Wasm), 4,448,737 (mainnet Wasm).
 - Guard v0.8 Wasm sha256 `6fb8e25dc3cba23bd3764cc6b4389982a956357e55b21b2a3a32ba527cebce77`
   (wasm-opt build that was deployed).
+- v0.9 (this repository, 29 Oct 2026): `x08`-`x10` age the ledger until the guard's entries are
+  under `TTL_THRESHOLD` and check that `register_escrow`, `contest`, an authorized `release_funds`
+  and `withdraw_remaining_funds` set the registration and the instance to exactly `TTL_EXTEND_TO`
+  (1,036,800 ledgers), that a refused authorization leaves both unchanged, and that the
+  `registration` view does not extend; `m03` checks the same on the built Wasm. `m02` with v0.9:
+  4,264,041 CPU instructions (testnet Wasm), 4,188,204 (mainnet Wasm). Guard v0.9 optimised Wasm
+  sha256 `f53d1ece92fcc29f822aac45a720f4b112a0cdd637e22bf3185cc1ae23c4d0d1` (deployed in run 7).
+- Workspace version 0.9.0 (repo finalize, 29 Oct 2026): run 7's Wasm was built with the workspace
+  version still at 0.8.0. The version bump changes no source line, but it changes the guard's built
+  bytes: with the same source, a clean `stellar contract build` plus `stellar contract optimize`
+  gives `f53d1ece...` at 0.8.0 and
+  `c3fe20557bcde3bea44b1cb74aa01efab00a46f52b3bd0ddb6f4c4c0f872fb22` (22,541 bytes) at 0.9.0
+  (stellar CLI 23.4.0, rustc 1.93.0). The claim registry's optimised Wasm is unchanged
+  (`af18affa...`). The run 7 hash refers to the deployed build; a fresh deployment from this
+  repository uploads `c3fe2055...` (once optimised).
 
 ## Testnet run 1 (guard v0.6, 24 Oct 2026)
 

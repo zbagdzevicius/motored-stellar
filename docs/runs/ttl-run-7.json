@@ -1,0 +1,27 @@
+{
+  "capturedAt": "2026-10-29T09:38Z",
+  "method": "Soroban RPC getLedgerEntries (https://soroban-testnet.stellar.org): liveUntilLedgerSeq of the guard's contract instance and of each escrow's registration key [Symbol(\"Esc\"), Address(escrow)] (persistent); ttlLedgers = liveUntilLedgerSeq - latestLedger",
+  "network": {
+    "stateArchivalSettings": { "minPersistentTtl": 120960, "maxEntryTtl": 3110400, "minTemporaryTtl": 720 }
+  },
+  "guardV09": {
+    "guard": "CBNODLOP53AMF2MTXUM4V36SWTFLZE4APWWXNMTZAI7XGRIJOQUAJKX6",
+    "latestLedger": 5448575,
+    "entries": [
+      { "label": "guard instance", "liveUntilLedgerSeq": 6485278, "lastModifiedLedgerSeq": 5448478, "ttlLedgers": 1036703 },
+      { "label": "Reg escrow A CAIKWHW744BMNMF5FSC6XP7LZTVB37KQFXWLJ5O5ILJKQM3GQ57PDMRQ", "liveUntilLedgerSeq": 6485302, "lastModifiedLedgerSeq": 5448507, "ttlLedgers": 1036727 },
+      { "label": "Reg escrow B CDRRZE645RPIOYHXJCXDBU5SQZUZQXRAHRKJ3HRKS3GWGWHSPIOAFLWY", "liveUntilLedgerSeq": 6485310, "lastModifiedLedgerSeq": 5448514, "ttlLedgers": 1036735 },
+      { "label": "Reg escrow C CCOA5O42POSX5KF2CKP3AZJ3SLSLEHAGC7GF7RENZC5PFRI65JHCTVXU", "liveUntilLedgerSeq": 6485318, "lastModifiedLedgerSeq": 5448520, "ttlLedgers": 1036743 },
+      { "label": "Reg escrow D CB5VVZ24FPIQCPZPPGGJV2JMRJWVJZ533OHP4XBTSSXO5FWRLHDMX54P", "liveUntilLedgerSeq": 6485325, "lastModifiedLedgerSeq": 5448565, "ttlLedgers": 1036750 },
+      { "label": "Reg escrow E CA5JCYZL5I2ZMSFCNUZYPDLEUNQINIUCNL4RLY4NRSNF2FINZULCGMGE", "liveUntilLedgerSeq": 6485332, "lastModifiedLedgerSeq": 5448567, "ttlLedgers": 1036757 }
+    ]
+  },
+  "guardV08ForComparison": {
+    "guard": "CBYWR2P3PEJS2IYIHVVQ2OHXM2ZHGKZDVVDIWI3JCUW7YE4VXNY467EX",
+    "latestLedger": 5448577,
+    "entries": [
+      { "label": "guard instance", "liveUntilLedgerSeq": 5552280, "lastModifiedLedgerSeq": 5431321, "ttlLedgers": 103703 },
+      { "label": "Reg run 4 escrow A CBZKLCMGU4UK4N42GBUAJUZJNBBXF672U4MZURFPKGDQTRIVN5GJSX3X", "liveUntilLedgerSeq": 5552285, "lastModifiedLedgerSeq": 5431331, "ttlLedgers": 103708 }
+    ]
+  }
+}

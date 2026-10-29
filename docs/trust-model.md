@@ -39,13 +39,17 @@ platform's keys can:
 - resolve it to its seller once the buyer's approval of every milestone has been on record for 7
   days alongside a dispute, without a buyer contest.
 
-No platform key can pay anyone except that escrow's buyer, its seller and the two fixed fee
-recipients (Trustless Work's 0.3% and the platform fee), and no resolution can give the seller
-more than the escrow amount.
+No platform key can pay anyone except that escrow's buyer, its seller and the two fee recipients
+the guard pins (Trustless Work's fee account and the platform address), and no resolution can give
+the seller more than the escrow amount. The guard pins the recipients, not the platform fee rate:
+the rate is set when the escrow is created and checked against the order by the platform's
+backend, and the guard does not cap it. A guard-side cap on the platform fee rate is planned work
+in D6.
 
 Escrows created while the platform backend is compromised are outside this guarantee, except that
 the guard's per-network pins (Trustless Work Wasm, EURC, the platform address, Trustless Work's
-fee address) still hold, so the two fee recipients stay fixed. The buyer's funding signature
+fee address) still hold, so the two fee recipients stay fixed; the platform fee rate of such an
+escrow is whatever the compromised backend set, since the guard does not cap it yet. The buyer's funding signature
 commits to the escrow's roles through `expected_escrow`, and checkout shows the receiver before
 signing, but an attacker who controls checkout could show false data.
 

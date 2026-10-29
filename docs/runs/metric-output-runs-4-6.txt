@@ -1,0 +1,13 @@
+network: testnet
+window: 2026-10-28T09:37:45.000Z .. 2026-12-12T09:37:45.000Z (45 days)
+FAIL  EURC released: 300.0000000 (floor >= 4000, target 7000)
+FAIL  escrows released or resolved to the seller: 3 (floor >= 20, target 35)
+FAIL  distinct buyer wallets: 1 (floor >= 12, target 20)
+FAIL  distinct sellers paid: 1 (floor >= 4, target 6)
+info  silent-buyer resolutions: 1 counted of 1
+info  excluded (test, team, related-party): 0; refunds ignored: 6
+info  target (EUR 7,000 / 35 escrows / 20 buyers / 6 sellers): not met
+info  stretch: volume not met, escrows not met
+info  sponsored accounts: 0
+info  dropped by footprint checks: 0
+VERDICT: FAIL

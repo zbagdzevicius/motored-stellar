@@ -32,7 +32,7 @@ sponsor account's XLM; users' wallet keys (never held by the platform); order-to
 | I3 | Blind signing | User signs a partner-built transaction that does something else | The UI decodes the XDR and shows escrow ID, amount and asset before signing | adapter |
 | D1 | Fee account without EURC trustline | Every exit reverts, break-glass included | Mainnet gate; monitor the trustline on both fee accounts | operational |
 | D2 | Circle freeze | Escrow balance or a fee account frozen | Alert on SAC `set_authorized` events; dispute and wait | operational |
-| D3 | Archived entries | Registry root, guard registration or escrow instance archived | Anchoring job extends TTL; alert near expiry; restore is automatic since Protocol 23 | operational |
+| D3 | Archived entries | Registry root, guard registration or escrow instance archived | Guard v0.9 extends its own instance and code and each registration it reads (`register_escrow`, `contest`, `__check_auth`) to 60 days once 30 or fewer remain; the anchoring job extends registry roots, escrow instances and Wasm code; alert near expiry; restore is automatic since Protocol 23. Liveness only: a registration is persistent storage, so archival never deletes it and cannot reset `closed` or the recorded timestamps | enforced (guard entries) + operational (the rest) |
 | D4 | Sponsor drain | Attacker gets the sponsor to fee-bump arbitrary transactions | Fee-bump allowlist: single-operation transactions on the user's own order escrow, the buyer's `contest`, trustline operations, the seller's off-ramp payment; inner fee caps; per-wallet rate limits; re-simulate before signing | adapter |
 | D5 | Seller griefing | Seller disputes after the buyer approved, to block release | Approval path pays the seller after the contest window at the release's net, or the buyer contests | enforced |
 | D6 | Proof DoS | Huge proofs inside `__check_auth` | Depth capped at 32; measured 4.5M instructions against a 400M limit | enforced |
@@ -41,6 +41,15 @@ sponsor account's XLM; users' wallet keys (never held by the platform); order-to
 | E2 | Runtime with several keys compromised | Attacker holds resolver + issuer + platform keys | Sellers of existing escrows only, after 7 days, revocable; separate service identities; offline revoker; alerts | operational |
 | E3 | Compromised checkout | Escrows created with attacker roles | Guard pins platform, fee and Wasm (#22, #23); an escrow naming another platform is never registered, so its funds stay locked rather than paid out | enforced |
 | E4 | Key rotation abuse | Admin swaps in attacker keys | Public `KeysProposed` event and a 7-day timelock before `apply_keys` | enforced |
+
+TTL notes (guard v0.9). Values: `TTL_THRESHOLD` 518,400 ledgers (30 days), `TTL_EXTEND_TO`
+1,036,800 ledgers (60 days), at 17,280 ledgers a day. The host clamps a persistent extension to
+the network maximum (testnet `maxEntryTtl` 3,110,400, read 29 Oct 2026). Extension adds rent to
+the transaction that triggers it: in run 7 the first `register_escrow` of an escrow was charged
+383,152 stroops against 50,416 in run 4 (v0.8, no extension), and the guard deployment, which now
+extends its 22,541-byte code and instance to 60 days, was charged 106,688,213 stroops. The
+extension is not a security control: it never changes a decision, and a refused authorization
+rolls it back.
 
 Out of scope here: the marketplace's own web application security, the ramp provider's KYC,
 and Trustless Work's API.
