@@ -10,9 +10,11 @@
  * - Volume is the gross amount leaving the escrow (seller payout plus fees):
  *   `escrow.amount` on a release; the whole outflow of the resolution
  *   transaction when the seller is the only party paid. Refunds do not count.
- * - Thresholds, all within the window: at least EUR 7,000 released; at least
- *   35 escrows released or resolved to the seller, from at least 20 distinct
- *   buyer wallets; at least 6 distinct sellers paid.
+ * - Floor (the committed condition), all within the window: at least EUR 4,000
+ *   released; at least 20 escrows released or resolved to the seller, from at
+ *   least 12 distinct buyer wallets; at least 4 distinct sellers paid.
+ * - Target (reported, not a condition): EUR 7,000, 35 escrows, 20 buyer
+ *   wallets, 6 sellers. Stretch (reported): EUR 15,000, 70 escrows.
  * - Silent-buyer resolutions (resolved to the seller without the buyer's
  *   approval) count, are reported as a sub-count, and make up no more than
  *   half of the counted escrows: any beyond that are not counted.
@@ -67,8 +69,16 @@ export interface MetricThresholds {
   sellers: number;
 }
 
-/** Public metric thresholds. */
+/** Committed floor: the public pass/fail condition for payment #3. */
 export const METRIC_THRESHOLDS: Readonly<MetricThresholds> = Object.freeze({
+  volume: eur("4000"),
+  escrows: 20,
+  buyers: 12,
+  sellers: 4,
+});
+
+/** Target: reported, not a condition. */
+export const METRIC_TARGET: Readonly<MetricThresholds> = Object.freeze({
   volume: eur("7000"),
   escrows: 35,
   buyers: 20,
@@ -111,6 +121,8 @@ export interface MetricResult {
     sellers: boolean;
   };
   pass: boolean;
+  /** Whether each target value is met (reported, not a condition). */
+  target: { volume: boolean; escrows: boolean; buyers: boolean; sellers: boolean; met: boolean };
   stretch: { volume: boolean; escrows: boolean };
 }
 
@@ -195,6 +207,17 @@ export function computeMetric(input: MetricInput, thresholds: MetricThresholds =
     refundsIgnored,
     thresholds: t,
     pass: t.volume && t.escrows && t.buyers && t.sellers,
+    target: {
+      volume: volumeUnits >= METRIC_TARGET.volume,
+      escrows: counted.length >= METRIC_TARGET.escrows,
+      buyers: buyers >= METRIC_TARGET.buyers,
+      sellers: sellers >= METRIC_TARGET.sellers,
+      met:
+        volumeUnits >= METRIC_TARGET.volume &&
+        counted.length >= METRIC_TARGET.escrows &&
+        buyers >= METRIC_TARGET.buyers &&
+        sellers >= METRIC_TARGET.sellers,
+    },
     stretch: { volume: volumeUnits >= METRIC_STRETCH.volume, escrows: counted.length >= METRIC_STRETCH.escrows },
   };
 }

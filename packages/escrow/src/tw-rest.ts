@@ -42,7 +42,7 @@ import { formatUnits, parseUnits } from './units.js';
 /**
  * How domain values map to the REST API's JSON numbers.
  *
- * TODO(verify): the API types `amount` and `platformFee` as plain numbers. We
+ * TODO(verify, D1 live API run): the API types `amount` and `platformFee` as plain numbers. We
  * assume `amount` is in whole tokens (decimal, e.g. 100.5 EURC) and `platformFee`
  * is a percentage (the API error reads "The platform fee cannot exceed 99%"),
  * which the contract stores in basis points. Confirm both with Trustless Work
@@ -70,7 +70,7 @@ export interface TrustlessWorkRestConfig {
   apiKey: string;
   /**
    * The token as the REST API identifies it.
-   * TODO(verify): whether `trustline.address` must be the asset issuer (G...) or the SAC (C...).
+   * TODO(verify, D1 live API run): whether `trustline.address` must be the asset issuer (G...) or the SAC (C...).
    * Trustless Work's mainnet checklist refers to the "asset issuer", so pass the issuer.
    */
   trustline: { address: string; symbol: string };
@@ -121,7 +121,7 @@ export class TrustlessWorkRestClient implements EscrowApi {
   async initialize(req: InitializeEscrowRequest): Promise<UnsignedTx> {
     const e = req.escrow;
     // Per the API reference, milestones are sent without `approved`/`status`.
-    // TODO(verify): whether the API accepts a `status` per milestone at deploy time.
+    // TODO(verify, D1 live API run): whether the API accepts a `status` per milestone at deploy time.
     // If it does not, the lifecycle sets a non-empty status with update-escrow
     // before the precheck (an empty status can never be approved in v1).
     return this.write('POST', '/deployer/single-release', {
@@ -162,7 +162,7 @@ export class TrustlessWorkRestClient implements EscrowApi {
   }
 
   resolve(req: ResolveDisputeRequest): Promise<UnsignedTx> {
-    // TODO(verify): the OpenAPI schema types `distributions` as an array of arrays,
+    // TODO(verify, D1 live API run): the OpenAPI schema types `distributions` as an array of arrays,
     // the TypeScript payload type as [{ address, amount }]. We send the latter.
     return this.write('POST', '/escrow/single-release/resolve-dispute', {
       contractId: req.contractId,
@@ -173,7 +173,7 @@ export class TrustlessWorkRestClient implements EscrowApi {
 
   updateEscrow(req: UpdateEscrowRequest): Promise<UnsignedTx> {
     const e = req.escrow;
-    // TODO(verify): field set of `escrow` for single-release update (OpenAPI marks
+    // TODO(verify, D1 live API run): field set of `escrow` for single-release update (OpenAPI marks
     // `flags`, `isActive` and `receiverMemo` required; milestone item type differs
     // between the OpenAPI schema and the TypeScript payload type).
     return this.write('PUT', '/escrow/single-release/update-escrow', {
@@ -199,7 +199,7 @@ export class TrustlessWorkRestClient implements EscrowApi {
    * Reads an escrow through Trustless Work's indexer with on-chain validation.
    * For guard decisions read the contract directly (`get_escrow` by simulation,
    * see precheck.ts); this is a convenience view.
-   * TODO(verify): response envelope (bare array assumed, object with `data` accepted).
+   * TODO(verify, D1 live API run): response envelope (bare array assumed, object with `data` accepted).
    */
   async getEscrow(contractId: string): Promise<EscrowSnapshot> {
     const qs = new URLSearchParams();
@@ -217,7 +217,7 @@ export class TrustlessWorkRestClient implements EscrowApi {
     return {
       status: body.status === 'SUCCESS' ? 'SUCCESS' : 'FAILED',
       message: typeof body.message === 'string' ? body.message : undefined,
-      // TODO(verify): which response field carries the new escrow's ID after a deploy.
+      // TODO(verify, D1 live API run): which response field carries the new escrow's ID after a deploy.
       contractId: typeof body.contractId === 'string' ? body.contractId : undefined,
       txHash: typeof body.hash === 'string' ? body.hash : undefined,
     };

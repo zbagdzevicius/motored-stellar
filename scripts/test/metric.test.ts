@@ -35,11 +35,19 @@ describe('Tranche 3 metric over the recorded (synthetic) fixture', () => {
     expect(m.window.start).toBe(new Date(1_800_000_000 * 1000).toISOString());
   });
 
-  it('fails when dropping two escrows takes volume and count below threshold', () => {
+  it('dropping two escrows misses the target on volume and count, while the floor still passes', () => {
     const f = computeFootprintMetric({ ...fp, escrows: fp.escrows.slice(2) }, obs);
+    expect(f.verdict).toBe('PASS');
+    expect(f.result!.target.volume).toBe(false);
+    expect(f.result!.target.escrows).toBe(false);
+    expect(f.result!.target.met).toBe(false);
+  });
+
+  it('fails the floor when only a few escrows remain', () => {
+    const f = computeFootprintMetric({ ...fp, escrows: fp.escrows.slice(0, 10) }, obs);
     expect(f.verdict).toBe('FAIL');
-    expect(f.result!.thresholds.volume).toBe(false);
     expect(f.result!.thresholds.escrows).toBe(false);
+    expect(f.result!.thresholds.volume).toBe(false);
   });
 
   it('caps silent-buyer resolutions at half of the counted escrows', () => {

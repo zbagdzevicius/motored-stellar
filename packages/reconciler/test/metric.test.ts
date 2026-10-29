@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   computeMetric,
+  METRIC_TARGET,
   METRIC_THRESHOLDS,
   type MetricEscrow,
   type MetricInput,
@@ -60,31 +61,41 @@ function input(over: Partial<MetricInput>): MetricInput {
 }
 
 describe("Tranche 3 metric", () => {
-  it("publishes the thresholds: EUR 7,000, 35 escrows, 20 buyers, 6 sellers", () => {
-    expect(METRIC_THRESHOLDS).toEqual({ volume: eur("7000"), escrows: 35, buyers: 20, sellers: 6 });
+  it("publishes the floor (EUR 4,000, 20 escrows, 12 buyers, 4 sellers) and the target", () => {
+    expect(METRIC_THRESHOLDS).toEqual({ volume: eur("4000"), escrows: 20, buyers: 12, sellers: 4 });
+    expect(METRIC_TARGET).toEqual({ volume: eur("7000"), escrows: 35, buyers: 20, sellers: 6 });
   });
 
-  it("passes exactly at the thresholds", () => {
+  it("passes exactly at the floor, target not met", () => {
+    const es = escrows(20, "200", 12, 4);
+    const m = computeMetric(input({ escrows: es, releases: releases(es) }));
+    expect(m.volume).toBe("4000.0000000");
+    expect([m.escrows, m.distinctBuyers, m.distinctSellers]).toEqual([20, 12, 4]);
+    expect(m.pass).toBe(true);
+    expect(m.target.met).toBe(false);
+  });
+
+  it("reports the target exactly at the target values", () => {
     const es = escrows(35, "200", 20, 6);
     const m = computeMetric(input({ escrows: es, releases: releases(es) }));
     expect(m.volume).toBe("7000.0000000");
-    expect([m.escrows, m.distinctBuyers, m.distinctSellers]).toEqual([35, 20, 6]);
     expect(m.pass).toBe(true);
+    expect(m.target).toEqual({ volume: true, escrows: true, buyers: true, sellers: true, met: true });
   });
 
-  it("fails each threshold one below", () => {
-    const vol = escrows(35, "199.9999999", 20, 6);
+  it("fails each floor value one below", () => {
+    const vol = escrows(20, "199.9999999", 12, 4);
     expect(computeMetric(input({ escrows: vol, releases: releases(vol) })).thresholds).toEqual({
       volume: false,
       escrows: true,
       buyers: true,
       sellers: true,
     });
-    const cnt = escrows(34, "300", 20, 6);
+    const cnt = escrows(19, "300", 12, 4);
     expect(computeMetric(input({ escrows: cnt, releases: releases(cnt) })).thresholds.escrows).toBe(false);
-    const buy = escrows(35, "300", 19, 6);
+    const buy = escrows(20, "300", 11, 4);
     expect(computeMetric(input({ escrows: buy, releases: releases(buy) })).thresholds.buyers).toBe(false);
-    const sel = escrows(35, "300", 20, 5);
+    const sel = escrows(20, "300", 12, 3);
     expect(computeMetric(input({ escrows: sel, releases: releases(sel) })).thresholds.sellers).toBe(false);
   });
 

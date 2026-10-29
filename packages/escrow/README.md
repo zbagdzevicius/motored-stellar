@@ -84,7 +84,7 @@ lifecycle over the in-memory escrow model.
 
 ## Open items
 
-Search the source for `TODO(verify)`: REST units for `amount` and `platformFee`,
+Search the source for `TODO(verify`: the REST client markers in `src/tw-rest.ts` read `TODO(verify, D1 live API run)` and close in the D1 run against the live v1 API. Open: REST units for `amount` and `platformFee`,
 the REST trustline address form, the `distributions` and `update-escrow` body
 shapes, which response carries a deployed escrow's ID, the official testnet
 deployer contract ID, the SDK's `simulateTransaction` auth-mode parameter, and
