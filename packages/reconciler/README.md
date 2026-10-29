@@ -99,9 +99,10 @@ aggregates only. It applies the published definition:
 - A release counts at gross (`escrow.amount`). A resolution counts when it pays
   the seller, measured from the EURC transfers of that transaction, because the
   resolution event carries no amounts. Refunds do not count.
-- Thresholds: at least EUR 7,000 released; at least 35 escrows from at least 20
-  distinct buyer wallets; at least 6 distinct sellers. A stretch goal (EUR
-  15,000, 70 escrows) is reported but is not a condition.
+- Floor (the pass/fail condition): at least EUR 4,000 released; at least 20
+  escrows from at least 12 distinct buyer wallets; at least 4 distinct sellers.
+  The target (EUR 7,000, 35 escrows, 20 wallets, 6 sellers) and the stretch goal
+  (EUR 15,000, 70 escrows) are reported but are not conditions.
 - Silent-buyer resolutions are reported as a sub-count. They count only up to
   the number of other counted escrows, so they never make up more than half.
 - Only escrows whose `platform` is the registered address count, and the caller

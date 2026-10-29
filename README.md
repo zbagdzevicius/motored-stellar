@@ -55,17 +55,38 @@ marketplace plugs in, there is a small typed port (`OrderSource`, `DeliveryOracl
   [docs/testnet-proofs.md](docs/testnet-proofs.md#run-6-refusals-landed-as-failed-transactions-29-oct-2026-0702-to-0705-utc).
   Testnet resets erase these entries; the runs are reproducible with `npm run testnet:keys`,
   `testnet:deploy`, `testnet:e2e`, `testnet:e2e-claims` and `testnet:refusals`, and are re-run and re-logged after any reset.
-- **Provenance:** the guard and registry were developed in a private lab workspace (lab runs 1 to 3
-  on 24 Oct 2026, built from the lab crate `lab-guard`, so their Wasm hashes differ from this
-  repository's build) and moved here with the same logic for run 4 on 28 Oct 2026. The initial
-  published history (pushed 29 Oct 2026) ends at the tag `pre-award-baseline`; diff any billed deliverable against that tag.
-- **Tests:** 76 Rust contract tests (guard 68, claim registry 8) and 391 TypeScript tests, run by
+- **For reviewers: provenance.** The guard and registry were developed in a private lab workspace
+  and moved here with the same logic for run 4 on 28 Oct 2026. Lab runs, all 24 Oct 2026, built
+  from the lab crate `lab-guard` (so their Wasm hashes differ from this repository's build):
+  run 1, guard v0.6 ([guard-authorised release](https://stellar.expert/explorer/testnet/tx/1db534873a2782f8e73eed638a73c816cbeaaea69a64279047ef4591f12e96e1));
+  run 2, guard v0.7 ([buyer `contest`](https://stellar.expert/explorer/testnet/tx/82c18aa74596f17ea520ece62c7169f2f760287216b57c5005c26da53ec1c9a5));
+  run 3, guard v0.8 ([guard deployed](https://stellar.expert/explorer/testnet/tx/1ac5c84bab7cc90f06a5ab4305938d7a01e60bf84e35327343f01ce11fd5cb47)).
+  The initial published history (pushed 29 Oct 2026) ends at the tag `pre-award-baseline`; diff
+  any billed deliverable against that tag. The tag `pre-award-filing` marks the state of this
+  repository on the SCF #46 filing day.
+- **Tests:** 76 Rust contract tests (guard 68, claim registry 8) and 393 TypeScript tests, run by
   [GitHub Actions](https://github.com/zbagdzevicius/motored-stellar/actions) on every push; the first
   run (29 Oct 2026, all jobs green) and later runs are logged in [docs/verification.md](docs/verification.md).
 - **Not yet done (planned, see the status table below):** runs with Circle's testnet EURC; live Privy, Stellar Wallets Kit and Bridge
   sandbox runs; the remaining refused paths as landed failed transactions (four are landed in run 6;
   the others are unit tests plus enforce-mode simulations); guard and registry Wasm verified on stellar.expert from a tagged
   commit; a fired test alert; the first tagged release.
+
+## Design decisions we made
+
+- **A guard contract, not a fork of Trustless Work.** We do not modify Trustless Work's contract:
+  every escrow runs its deployed code, and the guard pins that Wasm hash per network and holds
+  the `release_signer` and `dispute_resolver` roles, so every payout passes our rules. The guard
+  tests run against both deployed Wasm files.
+- **A claim registry.** A silent buyer's seller payout is bound to a public, write-once record of
+  the carrier's delivery event, anchored after full funding and at least 7 days old by the
+  registry's own timestamp, which the platform cannot backdate; an offline revoker key stops a
+  bad batch from paying. It does not prove delivery on its own; it makes every such payout
+  auditable ([trust model](docs/trust-model.md)).
+- **Break-glass is refund-only.** If a guard defect blocks release or refund, an offline key can
+  still return a disputed escrow's whole balance to its buyer, but it cannot pay the seller or
+  anyone else, so the emergency path cannot move money away from the buyer
+  ([threat model](docs/threat-model.md)).
 
 ## The order flow
 
@@ -178,7 +199,7 @@ imports, or testnet tx hashes mapped to order references in [docs/testnet-proofs
 
 | ID | Scope | In this repository | Pre-award (not billed) | Billed remaining work |
 |---|---|---|---|---|
-| D1 | Trustless Work escrow in EURC on testnet, guard in both roles | [`packages/escrow`](packages/escrow), [`scripts/testnet`](scripts/testnet) | REST client (shapes marked TODO(verify)), deployer path, lifecycle, precheck, event reader, release service; deployer path ran on testnet (run 4) | Live v1 REST API runs (or the on-chain deployer, if Trustless Work confirms the API does not take a contract address in both roles, or has not answered within 10 working days of our dated written request, linked in the run log); Circle testnet EURC |
+| D1 | Trustless Work escrow in EURC on testnet, guard in both roles | [`packages/escrow`](packages/escrow), [`scripts/testnet`](scripts/testnet) | REST client in [`packages/escrow/src/tw-rest.ts`](packages/escrow/src/tw-rest.ts), drafted against Trustless Work's OpenAPI schema; request and response shapes are verified against the live v1 API in D1 (each open shape is marked `TODO(verify, D1 live API run)`); deployer path, lifecycle, precheck, event reader, release service; deployer path ran on testnet (run 4) | Live v1 REST API runs (or the on-chain deployer, if Trustless Work confirms the API does not take a contract address in both roles, or has not answered within 10 working days of our dated written request, linked in the run log); Circle testnet EURC |
 | D2 | Wallets, sponsored accounts, EURC trustlines, fee-bumps | [`packages/wallets`](packages/wallets), [`packages/eurc`](packages/eurc) | Privy and Wallets Kit adapters, CAP-33 sponsorship, fee-bump policy; tx shapes lab-proven ([proofs](docs/testnet-proofs.md#sponsored-accounts-and-fee-bumps-wallet-lab-24-oct-2026)) | Browser runs with real wallets; Circle testnet EURC; measured fee caps; key custody |
 | D3 | Order system on the escrow (orders, ledger and reconciliation, payouts, disputes and refunds, notifications) | Rules only: [`packages/escrow/src/fees.ts`](packages/escrow/src/fees.ts); `OrderSource`, `DeliveryOracle`, `LedgerSource` ports | Fee, cap, rounding and refund rules with tests | A new `packages/escrow-orders` (escrow order-state machine) and a `packages/reconciler` extension, with public CI tests; marketplace screens stay private |
 | D4 | Checkout on the EURC rail, end-to-end test | [`examples/order-flow`](examples/order-flow), [`scripts/testnet/e2e.ts`](scripts/testnet/e2e.ts), [`scripts/testnet/e2e-claims.ts`](scripts/testnet/e2e-claims.ts) | In-memory flow and the scripted testnet run | Private checkout UI; end-to-end run log appended to testnet-proofs.md |

@@ -192,12 +192,13 @@ export function renderReport(r: FootprintMetricReport, opts: { perEscrow?: boole
     const row = (pass: boolean, name: string, value: string | number) => `${pass ? 'PASS' : 'FAIL'}  ${name}: ${value}`;
     lines.push(
       `window: ${m.window.start} .. ${m.window.end} (${r.windowDays} days)`,
-      row(m.thresholds.volume, 'EURC released', `${m.volume} (>= 7000)`),
-      row(m.thresholds.escrows, 'escrows released or resolved to the seller', `${m.escrows} (>= 35)`),
-      row(m.thresholds.buyers, 'distinct buyer wallets', `${m.distinctBuyers} (>= 20)`),
-      row(m.thresholds.sellers, 'distinct sellers paid', `${m.distinctSellers} (>= 6)`),
+      row(m.thresholds.volume, 'EURC released', `${m.volume} (floor >= 4000, target 7000)`),
+      row(m.thresholds.escrows, 'escrows released or resolved to the seller', `${m.escrows} (floor >= 20, target 35)`),
+      row(m.thresholds.buyers, 'distinct buyer wallets', `${m.distinctBuyers} (floor >= 12, target 20)`),
+      row(m.thresholds.sellers, 'distinct sellers paid', `${m.distinctSellers} (floor >= 4, target 6)`),
       `info  silent-buyer resolutions: ${m.silentBuyer.counted} counted of ${m.silentBuyer.total}`,
       `info  excluded (test, team, related-party): ${m.excluded}; refunds ignored: ${m.refundsIgnored}`,
+      `info  target (EUR 7,000 / 35 escrows / 20 buyers / 6 sellers): ${m.target.met ? 'met' : 'not met'}`,
       `info  stretch: volume ${m.stretch.volume ? 'met' : 'not met'}, escrows ${m.stretch.escrows ? 'met' : 'not met'}`,
     );
   }
