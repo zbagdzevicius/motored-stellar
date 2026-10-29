@@ -4,14 +4,17 @@
 //  - testnet-fund-events.json: three small fund_escrow calls on one escrow (18 Oct 2026).
 
 import { readFileSync } from 'node:fs';
-import { Keypair, nativeToScVal, xdr } from '@stellar/stellar-sdk';
+import { Address, Keypair, nativeToScVal, xdr } from '@stellar/stellar-sdk';
 import { describe, expect, it } from 'vitest';
 import {
   addr,
   assessFunding,
+  chunkContractIds,
+  cursorLedger,
   decodeEvent,
   EscrowEventReader,
   InMemoryEventSource,
+  ledgerEndCursor,
   str,
   struct,
   sym,
@@ -151,5 +154,60 @@ describe('EscrowEventReader over a fixture-backed source', () => {
     const signer = 'GAJNTKOPP733TXDRBLPAVKA6TS3KQMR2HNXAEPLCL3WSXIW6EFDQOL5U';
     const a = assessFunding({ amount: 8997n, balance: 8997n }, signer, f);
     expect(a).toMatchObject({ paid: true, buyerFunded: 8997n, excess: 0n, flags: [] });
+  });
+});
+
+describe('EscrowEventReader within Stellar RPC getEvents limits', () => {
+  // Synthetic tw_fund events in RPC's id format (TOID of the ledger, then the event index).
+  const eventId = (ledger: number, n: number) => `${((BigInt(ledger) << 32n) | BigInt(n)).toString().padStart(19, '0')}-0000000000`;
+  const escrows = Array.from({ length: 7 }, () => Address.contract(Keypair.random().rawPublicKey()).toString());
+  const fundEvent = (contractId: string, ledger: number, n: number, amount: bigint): RawContractEvent => ({
+    id: eventId(ledger, n),
+    ledger,
+    ledgerClosedAt: '2026-10-29T00:00:00Z',
+    contractId,
+    txHash: n.toString(16).padStart(64, '0'),
+    topic: [symbolTopic('tw_fund')],
+    value: xdr.ScVal.scvVec([addr(BUYER), nativeToScVal(amount, { type: 'i128' })]).toXDR('base64'),
+  });
+  // Escrow i is funded at ledger 10,000 + 1,000 i; the last one again near the latest ledger.
+  const events = [...escrows.map((e, i) => fundEvent(e, 10_000 + 1_000 * i, i + 1, BigInt(i + 1))), fundEvent(escrows[6]!, 19_990, 99, 50n)];
+
+  it('reads more than 5 escrows in groups of 5, from the oldest retained ledger, past empty pages', async () => {
+    const source = new InMemoryEventSource(events, { oldestLedger: 9_000, latestLedger: 20_000, scanLedgers: 2_000 });
+    const reader = new EscrowEventReader(source, { pageLimit: 10 });
+    const r = await reader.readAll(escrows);
+    expect(r.events.map((e) => e.contractId)).toEqual([...escrows, escrows[6]]);
+    expect(r.latestLedger).toBe(20_000);
+    expect(source.queries.every((q) => q.contractIds.length <= 5)).toBe(true);
+    expect(new Set(source.queries.map((q) => q.contractIds.length))).toEqual(new Set([5, 2]));
+    // The start ledger is clamped to the oldest retained ledger, never 0.
+    expect(source.queries.filter((q) => !q.cursor).map((q) => q.startLedger)).toEqual([9_000, 9_000]);
+    // The second group (escrows 5 and 6) sees nothing for its first scans and keeps paging.
+    expect(source.queries.some((q) => q.contractIds.length === 2 && q.cursor !== undefined)).toBe(true);
+  });
+
+  it('refuses a single page for more than 5 escrows (the RPC would reject it)', async () => {
+    const reader = new EscrowEventReader(new InMemoryEventSource(events));
+    await expect(reader.poll(escrows)).rejects.toThrow(RangeError);
+    await expect(new InMemoryEventSource(events).getEvents({ contractIds: escrows })).rejects.toThrow(/at most 5/);
+  });
+
+  it('keeps the full funding history when a scan range in the middle is empty', async () => {
+    // The old reader stopped at the first empty page and missed the second funding.
+    const source = new InMemoryEventSource(events, { oldestLedger: 9_000, latestLedger: 20_000, scanLedgers: 2_000 });
+    const f = await new EscrowEventReader(source, { fromLedger: 1 }).fundings(escrows[6]!);
+    expect(f.map((x) => [x.ledger, x.amount])).toEqual([
+      [16_000, 7n],
+      [19_990, 50n],
+    ]);
+    expect(source.queries[0]!.startLedger).toBe(9_000); // fromLedger 1 clamped to oldestLedger
+    expect(source.queries.length).toBeGreaterThan(2);
+  });
+
+  it('round-trips a ledger-end cursor', () => {
+    expect(cursorLedger(ledgerEndCursor(5_448_594))).toBe(5_448_594);
+    expect(ledgerEndCursor(5_448_594)).toBe('0023401537334149119-4294967295'); // cursor returned by testnet RPC, 29 Oct 2026
+    expect(chunkContractIds(escrows).map((c) => c.length)).toEqual([5, 2]);
   });
 });

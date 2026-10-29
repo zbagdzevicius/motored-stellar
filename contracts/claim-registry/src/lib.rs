@@ -1,4 +1,4 @@
-//! # claim-registry (v0.8)
+//! # claim-registry (v0.10)
 //!
 //! Write-once Merkle roots for batches of delivery claims, with the ledger time at which each
 //! root was anchored, plus permanent revocation of a batch by a separate revoker key.
@@ -14,6 +14,19 @@
 //! The leaf format for delivery claims (tag 0x01) is specified in `docs/leaf-format.md` and
 //! computed on chain by `motored_escrow_guard::leaf`.
 //!
+//! **TTL upkeep (v0.10).** `anchor` extends the new root; `revoke` extends the revocation entry;
+//! `verify` and `anchored_at` extend the revocation entry or the root they read; every call extends
+//! the instance and code. The values ([`TTL_THRESHOLD`] / [`TTL_EXTEND_TO`], 120 / 150 days) sit at
+//! or above mainnet's `min_persistent_ttl`. v0.8 used 1 / 2 days, below every network's minimum, so
+//! its extensions were no-ops. An extension made on a path that then fails (for example
+//! `anchored_at` on a revoked batch, or a guard authorization refused after `verify`) is rolled back
+//! with it, so the off-chain keeper still lists revocation keys. An archived entry fails closed (no
+//! verification, no anchor time).
+//!
+//! The issuer and revoker are fixed at construction. They are meant to be multisig G-accounts that
+//! rotate their signers at the account level; a compromised account is handled by a new registry
+//! (and a new guard pointing at it) for new escrows.
+//!
 //! **Status: unaudited. Testnet only.**
 #![no_std]
 use soroban_sdk::{
@@ -25,11 +38,14 @@ use soroban_sdk::{
 const TAG_NODE: u8 = 0x02;
 /// Maximum proof length: 2^32 leaves per batch.
 const MAX_DEPTH: u32 = 32;
-/// TTL bump for anchored roots, in ledgers (~1 day at 5 s ledgers).
-/// Testnet values: a production deployment sets these to cover the claim's whole useful life
-/// (at least the escrow `delay` plus the dispute horizon) or runs a TTL keeper.
-const TTL_THRESHOLD: u32 = 17_280;
-const TTL_EXTEND_TO: u32 = 17_280 * 2;
+/// Ledgers per day at the ~5 s target ledger close time.
+pub const LEDGERS_PER_DAY: u32 = 17_280;
+/// TTL upkeep threshold: an entry with 120 days (mainnet `min_persistent_ttl`) or less left is
+/// extended, so a fresh entry is extended at its first touch on every network.
+pub const TTL_THRESHOLD: u32 = 120 * LEDGERS_PER_DAY;
+/// TTL upkeep target: 150 days from the current ledger (under every network's maximum entry TTL).
+/// The off-chain keeper still extends roots and revocations that nobody reads for that long.
+pub const TTL_EXTEND_TO: u32 = 150 * LEDGERS_PER_DAY;
 
 #[contracttype]
 enum Key {
@@ -67,6 +83,25 @@ pub struct BatchRevoked {
 #[contract]
 pub struct ClaimRegistry;
 
+/// Extends the registry's instance and code TTL (no-op while above the threshold).
+fn bump_instance(env: &Env) {
+    env.storage()
+        .instance()
+        .extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
+}
+
+/// Extends one persistent entry's TTL if it exists (no-op while above the threshold). Returns
+/// whether it exists.
+fn bump_if_present(env: &Env, k: &Key) -> bool {
+    let p = env.storage().persistent();
+    if p.has(k) {
+        p.extend_ttl(k, TTL_THRESHOLD, TTL_EXTEND_TO);
+        true
+    } else {
+        false
+    }
+}
+
 #[contractimpl]
 impl ClaimRegistry {
     /// `issuer` anchors roots (the platform's online batching key); `revoker` is a separate,
@@ -74,6 +109,7 @@ impl ClaimRegistry {
     pub fn __constructor(env: Env, issuer: Address, revoker: Address) {
         env.storage().instance().set(&Key::Issuer, &issuer);
         env.storage().instance().set(&Key::Revoker, &revoker);
+        bump_instance(&env);
     }
 
     /// Anchors `root` for `batch_id`, once. Records the current ledger timestamp.
@@ -98,9 +134,7 @@ impl ClaimRegistry {
         env.storage()
             .persistent()
             .extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND_TO);
-        env.storage()
-            .instance()
-            .extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
+        bump_instance(&env);
         Ok(())
     }
 
@@ -112,18 +146,23 @@ impl ClaimRegistry {
             .get(&Key::Revoker)
             .ok_or(Error::NotInitialized)?;
         r.require_auth();
+        let key = Key::Revoked(batch_id);
+        env.storage().persistent().set(&key, &true);
         env.storage()
             .persistent()
-            .set(&Key::Revoked(batch_id), &true);
+            .extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND_TO);
+        bump_instance(&env);
         BatchRevoked { batch_id }.publish(&env);
         Ok(())
     }
 
     /// Ledger timestamp at which `batch_id` was anchored.
     pub fn anchored_at(env: Env, batch_id: u64) -> Result<u64, Error> {
-        if env.storage().persistent().has(&Key::Revoked(batch_id)) {
+        bump_instance(&env);
+        if bump_if_present(&env, &Key::Revoked(batch_id)) {
             return Err(Error::Revoked);
         }
+        bump_if_present(&env, &Key::Root(batch_id));
         let r: RootRec = env
             .storage()
             .persistent()
@@ -143,9 +182,11 @@ impl ClaimRegistry {
         if proof.len() > MAX_DEPTH {
             return Err(Error::ProofTooLong);
         }
-        if env.storage().persistent().has(&Key::Revoked(batch_id)) {
+        bump_instance(&env);
+        if bump_if_present(&env, &Key::Revoked(batch_id)) {
             return Ok(false);
         }
+        bump_if_present(&env, &Key::Root(batch_id));
         let Some(rec) = env
             .storage()
             .persistent()

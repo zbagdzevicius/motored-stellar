@@ -4,7 +4,9 @@
 // submit it. Ported from the lab's extension cost probe.
 //
 // What to extend (architecture, anchoring job):
-//   - claim registry: instance + each Root(batch_id) entry still inside a payout window
+//   - claim registry: instance + each Root(batch_id) entry still inside a payout window,
+//     and each Revoked(batch_id) entry (a revocation must outlive every claim of its batch;
+//     an archived Revoked entry fails `verify` closed, which blocks payouts until restored)
 //   - guard: instance + each open Esc(escrow) registration
 //   - each open escrow's instance (Trustless Work's own extend_contract_ttl extends
 //     only the escrow's data entry, not its instance)
@@ -46,6 +48,10 @@ const variant = (name: string, v: xdr.ScVal) => xdr.ScVal.scvVec([xdr.ScVal.scvS
 export const registryRootKey = (registry: string, batchId: bigint | number): xdr.LedgerKey =>
   contractDataKey(registry, variant("Root", nativeToScVal(toU64(batchId), { type: "u64" })));
 
+/** Claim registry `Key::Revoked(batch_id)`: exists only once the batch is revoked. */
+export const registryRevokedKey = (registry: string, batchId: bigint | number): xdr.LedgerKey =>
+  contractDataKey(registry, variant("Revoked", nativeToScVal(toU64(batchId), { type: "u64" })));
+
 /** Guard `DK::Esc(escrow)` registration entry. */
 export const guardRegistrationKey = (guard: string, escrow: string): xdr.LedgerKey =>
   contractDataKey(guard, variant("Esc", new Address(escrow).toScVal()));
@@ -61,7 +67,15 @@ export const sacBalanceKey = (sac: string, holder: string): xdr.LedgerKey =>
   contractDataKey(sac, variant("Balance", new Address(holder).toScVal()));
 
 export interface UpkeepTargets {
-  registry?: { contractId: string; batchIds?: Array<bigint | number> };
+  registry?: {
+    contractId: string;
+    batchIds?: Array<bigint | number>;
+    /**
+     * Revoked batches still inside a payout window (from `BatchRevoked` events or the revocation
+     * log). Their `Revoked(batch_id)` entry is extended alongside the root.
+     */
+    revokedBatchIds?: Array<bigint | number>;
+  };
   guard?: { contractId: string; openEscrows?: string[] };
   /** Open escrows: instance and SAC balance entries are extended. */
   escrows?: { contractIds: string[]; sac?: string };
@@ -75,6 +89,7 @@ export function upkeepKeys(t: UpkeepTargets): xdr.LedgerKey[] {
   if (t.registry) {
     keys.push(instanceKey(t.registry.contractId));
     for (const b of t.registry.batchIds ?? []) keys.push(registryRootKey(t.registry.contractId, b));
+    for (const b of t.registry.revokedBatchIds ?? []) keys.push(registryRevokedKey(t.registry.contractId, b));
   }
   if (t.guard) {
     keys.push(instanceKey(t.guard.contractId));

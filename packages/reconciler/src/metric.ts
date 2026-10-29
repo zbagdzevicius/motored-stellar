@@ -10,9 +10,15 @@
  * - Volume is the gross amount leaving the escrow (seller payout plus fees):
  *   `escrow.amount` on a release; the whole outflow of the resolution
  *   transaction when the seller is the only party paid. Refunds do not count.
- * - Floor (the committed condition), all within the window: at least EUR 4,000
- *   released; at least 20 escrows released or resolved to the seller, from at
- *   least 12 distinct buyer wallets; at least 4 distinct sellers paid.
+ * - Window: an escrow counts when it is FUNDED inside the 45-day funding
+ *   window and released or resolved to the seller within 14 days after that
+ *   window ends (day 59 at the latest, inside the 90-day tranche window). An
+ *   escrow funded near the end of the window still has time to close, so the
+ *   whole 45 days of orders count.
+ * - Floor (the committed condition), over the escrows so counted: at least
+ *   EUR 4,000 released; at least 20 escrows released or resolved to the
+ *   seller, from at least 12 distinct buyer wallets; at least 4 distinct
+ *   sellers paid.
  * - Target (reported, not a condition): EUR 7,000, 35 escrows, 20 buyer
  *   wallets, 6 sellers. Stretch (reported): EUR 15,000, 70 escrows.
  * - Silent-buyer resolutions (resolved to the seller without the buyer's
@@ -24,6 +30,8 @@
  */
 import { eur, formatEur, sum, type Units } from "./units.js";
 
+const DAY_MS = 86_400_000;
+
 /** An escrow from its `tw_init` event. */
 export interface MetricEscrow {
   escrowId: string;
@@ -34,6 +42,8 @@ export interface MetricEscrow {
   /** Receiver role (seller wallet). */
   seller: string;
   amount: Units;
+  /** First funding of the escrow (epoch ms). Decides which window it belongs to. */
+  fundedAt: number;
   /** Test, team or related-party escrow, excluded from the metric. */
   excluded?: boolean;
 }
@@ -77,6 +87,11 @@ export const METRIC_THRESHOLDS: Readonly<MetricThresholds> = Object.freeze({
   sellers: 4,
 });
 
+/** Length of the funding window. */
+export const METRIC_WINDOW_DAYS = 45;
+/** Days after the funding window ends in which a funded escrow may still close and count. */
+export const METRIC_CLOSE_DAYS = 14;
+
 /** Target: reported, not a condition. */
 export const METRIC_TARGET: Readonly<MetricThresholds> = Object.freeze({
   volume: eur("7000"),
@@ -94,8 +109,11 @@ export const METRIC_STRETCH: Readonly<Pick<MetricThresholds, "volume" | "escrows
 export interface MetricInput {
   /** The registered platform address. */
   platform: string;
-  /** Inclusive start, exclusive end (epoch ms). */
-  window: { start: number; end: number };
+  /**
+   * Funding window, inclusive start and exclusive end (epoch ms). `closeBy`
+   * (exclusive) defaults to `end` plus METRIC_CLOSE_DAYS.
+   */
+  window: { start: number; end: number; closeBy?: number };
   escrows: MetricEscrow[];
   releases: MetricRelease[];
   resolutions: MetricResolution[];
@@ -103,7 +121,8 @@ export interface MetricInput {
 }
 
 export interface MetricResult {
-  window: { start: string; end: string };
+  /** Funding window and the closing deadline. */
+  window: { start: string; end: string; closeBy: string };
   volume: string;
   volumeUnits: Units;
   escrows: number;
@@ -136,7 +155,10 @@ interface Counted {
 /** Compute the metric. Pure. */
 export function computeMetric(input: MetricInput, thresholds: MetricThresholds = METRIC_THRESHOLDS): MetricResult {
   const { start, end } = input.window;
-  const inWindow = (t: number) => t >= start && t < end;
+  const closeBy = input.window.closeBy ?? end + METRIC_CLOSE_DAYS * DAY_MS;
+  // Funded inside the funding window, closed after funding and before the deadline.
+  const inWindow = (e: MetricEscrow, closedAt: number) =>
+    e.fundedAt >= start && e.fundedAt < end && closedAt >= e.fundedAt && closedAt < closeBy;
   const byId = new Map(input.escrows.filter((e) => e.platform === input.platform).map((e) => [e.escrowId, e]));
 
   const candidates = new Map<string, Counted>();
@@ -149,7 +171,7 @@ export function computeMetric(input: MetricInput, thresholds: MetricThresholds =
 
   for (const r of input.releases) {
     const escrow = byId.get(r.escrowId);
-    if (!escrow || !inWindow(r.closedAt)) continue;
+    if (!escrow || !inWindow(escrow, r.closedAt)) continue;
     if (escrow.excluded) {
       excluded++;
       continue;
@@ -159,7 +181,7 @@ export function computeMetric(input: MetricInput, thresholds: MetricThresholds =
 
   for (const r of input.resolutions) {
     const escrow = byId.get(r.escrowId);
-    if (!escrow || !inWindow(r.closedAt)) continue;
+    if (!escrow || !inWindow(escrow, r.closedAt)) continue;
     const outflows = input.transfers.filter((t) => t.txHash === r.txHash && t.from === escrow.escrowId);
     const toSeller = sum(outflows.filter((t) => t.to === escrow.seller).map((t) => t.amount));
     if (toSeller === 0n) {
@@ -196,7 +218,11 @@ export function computeMetric(input: MetricInput, thresholds: MetricThresholds =
     sellers: sellers >= thresholds.sellers,
   };
   return {
-    window: { start: new Date(start).toISOString(), end: new Date(end).toISOString() },
+    window: {
+      start: new Date(start).toISOString(),
+      end: new Date(end).toISOString(),
+      closeBy: new Date(closeBy).toISOString(),
+    },
     volume: formatEur(volumeUnits),
     volumeUnits,
     escrows: counted.length,

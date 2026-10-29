@@ -31,7 +31,7 @@ describe('Tranche 3 metric over the recorded (synthetic) fixture', () => {
     expect(m.refundsIgnored).toBe(1); // escrow 36: resolved to the buyer
     expect(m.excluded).toBe(1); // escrow 37: team test order
     expect(r.skipped).toEqual([{ escrow: fp.escrows[38], reason: 'guard is not release_signer and dispute_resolver' }]);
-    // escrow 39 is released on day 46 of a 45-day window: not in the 36 counted.
+    // escrow 39 is funded on day 45.5, just after the 45-day funding window (released on day 46): not in the 36 counted.
     expect(m.window.start).toBe(new Date(1_800_000_000 * 1000).toISOString());
   });
 

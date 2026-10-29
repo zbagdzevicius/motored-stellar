@@ -32,8 +32,13 @@ const sha256 = (b: Uint8Array): Buffer => createHash('sha256').update(b).digest(
 
 /** Base fee for contract calls; the resource fee comes from simulation. */
 const CONTRACT_BASE_FEE = '1000000';
-const POLL_ATTEMPTS = 40;
 const POLL_MS = 1500;
+/** Wait when a transaction has no maxTime (every builder here sets 300 s timebounds). */
+const MAX_WAIT_MS = 300_000;
+/** Wall-clock slack past maxTime before giving up when no ledger close past it has been seen. */
+const MAX_TIME_GRACE_MS = 60_000;
+/** NOT_FOUND polls after a PENDING send before the same envelope is resent (mempool eviction). */
+const RESEND_EVERY_POLLS = 4;
 
 export type TxStatus = 'SUCCESS' | 'FAILED' | 'REJECTED' | 'TIMEOUT';
 
@@ -43,6 +48,38 @@ export interface TxRecord {
   status: TxStatus;
   link: string;
   errors?: string[];
+  /** Why it did not land, when known (a result code such as `txBadSeq`, or `expired`). */
+  reason?: string;
+  /** True when this transaction can no longer land, so rebuilding and re-signing cannot double-apply it. */
+  retryable?: boolean;
+}
+
+/** Test seams for `Chain.send`: poll interval, clock and sleep. */
+export interface ChainOptions {
+  pollMs?: number;
+  now?: () => number;
+  sleep?: (ms: number) => Promise<void>;
+}
+
+type AnyTx = Transaction | ReturnType<typeof TransactionBuilder.buildFeeBumpTransaction>;
+
+/** The transaction's maxTime in Unix seconds, or undefined when it has none. */
+export function txMaxTime(tx: AnyTx): number | undefined {
+  const inner = 'innerTransaction' in tx ? tx.innerTransaction : tx;
+  const max = Number(inner.timeBounds?.maxTime ?? 0);
+  return max > 0 ? max : undefined;
+}
+
+/** Result code name from a `sendTransaction` ERROR (`txBadSeq`, `txTooLate`, ...), looking inside a fee bump. */
+export function sendErrorCode(errorResult: xdr.TransactionResult | undefined): string | undefined {
+  if (!errorResult) return undefined;
+  try {
+    const res = errorResult.result;
+    if (res.type === 'txFeeBumpInnerFailed' || res.type === 'txFeeBumpInnerSuccess') return res.innerResultPair.result.result.type;
+    return res.type;
+  } catch {
+    return undefined;
+  }
 }
 
 export interface TxResult extends TxRecord {
@@ -156,13 +193,20 @@ function diagnosticEventsOf(g: rpc.Api.GetFailedTransactionResponse | rpc.Api.Ge
 export class Chain {
   readonly server: rpc.Server;
   readonly runLog: Array<TxRecord | Refusal | { label: string; note: unknown }> = [];
+  private readonly now: () => number;
+  private readonly sleep: (ms: number) => Promise<void>;
+  private readonly pollMs: number;
 
   constructor(
     readonly cfg: NetworkConfig,
     private readonly print: (line: string) => void = (l) => console.log(l),
     server?: rpc.Server,
+    opts: ChainOptions = {},
   ) {
     this.server = server ?? new rpc.Server(cfg.rpcUrl, { allowHttp: cfg.rpcUrl.startsWith('http://') });
+    this.now = opts.now ?? Date.now;
+    this.sleep = opts.sleep ?? ((ms) => new Promise((ok) => setTimeout(ok, ms)));
+    this.pollMs = opts.pollMs ?? POLL_MS;
   }
 
   note(label: string, data?: unknown): void {
@@ -171,8 +215,16 @@ export class Chain {
   }
 
   private record(r: TxResult): TxResult {
-    this.runLog.push({ label: r.label, hash: r.hash, status: r.status, link: r.link, ...(r.errors ? { errors: r.errors } : {}) });
-    this.print(`== ${r.label}: ${r.status}${r.errors?.length ? ` [${r.errors.join('; ')}]` : ''} ${r.link}`);
+    this.runLog.push({
+      label: r.label,
+      hash: r.hash,
+      status: r.status,
+      link: r.link,
+      ...(r.errors ? { errors: r.errors } : {}),
+      ...(r.reason ? { reason: r.reason } : {}),
+      ...(r.retryable !== undefined ? { retryable: r.retryable } : {}),
+    });
+    this.print(`== ${r.label}: ${r.status}${r.reason ? ` (${r.reason})` : ''}${r.errors?.length ? ` [${r.errors.join('; ')}]` : ''} ${r.link}`);
     return r;
   }
 
@@ -191,22 +243,92 @@ export class Chain {
     return new TransactionBuilder(acct, { fee: CONTRACT_BASE_FEE, networkPassphrase: this.cfg.passphrase }).addOperation(op).setTimeout(300).build();
   }
 
-  /** Signs (with every signer), submits and polls until the transaction lands. */
-  async send(label: string, tx: Transaction | ReturnType<typeof TransactionBuilder.buildFeeBumpTransaction>, signers: Keypair[]): Promise<TxResult> {
+  /**
+   * Signs (with every signer), submits and polls until the transaction lands. Same rules as
+   * `RpcSubmitter` in packages/escrow/src/adapters/rpc.ts (keep them aligned):
+   *
+   * - the hash is computed and logged before the first send, and a hash RPC already knows
+   *   returns its recorded outcome (a rerun with the same signed envelope is idempotent);
+   * - `TRY_AGAIN_LATER` and `txBadSeq` behind an earlier transaction are resent; `txBadSeq`
+   *   with the sequence used up is REJECTED, `retryable: true`;
+   * - polling runs until a ledger closes past maxTime (TIMEOUT `expired`, `retryable: true`);
+   * - a PENDING transaction that stays NOT_FOUND is resent as the same envelope (same hash)
+   *   in case the mempool dropped it.
+   */
+  async send(label: string, tx: AnyTx, signers: Keypair[]): Promise<TxResult> {
     for (const s of signers) tx.sign(s);
-    const r = await this.server.sendTransaction(tx);
-    const link = txLink(this.cfg, r.hash);
-    if (r.status === 'ERROR') return this.record({ label, hash: r.hash, status: 'REJECTED', link });
-    for (let i = 0; i < POLL_ATTEMPTS; i++) {
-      await new Promise((ok) => setTimeout(ok, POLL_MS));
-      const g = await this.server.getTransaction(r.hash);
-      if (g.status === rpc.Api.GetTransactionStatus.SUCCESS) return this.record({ label, hash: r.hash, status: 'SUCCESS', link, returnValue: g.returnValue });
-      if (g.status === rpc.Api.GetTransactionStatus.FAILED) {
-        const errors = contractErrorCodes(diagnosticEventsOf(g)).map(guardErrorLabel);
-        return this.record({ label, hash: r.hash, status: 'FAILED', link, errors });
+    const hash = Buffer.from(tx.hash()).toString('hex');
+    const link = txLink(this.cfg, hash);
+    const maxTime = txMaxTime(tx);
+    const deadline = maxTime !== undefined ? maxTime * 1000 + MAX_TIME_GRACE_MS : this.now() + MAX_WAIT_MS;
+
+    const known = await this.landed(label, hash, link);
+    if (known) return known;
+    this.print(`   ${label}: submitting ${hash}`);
+
+    let needSend = true;
+    // After RPC has accepted the envelope once, a later send's ERROR proves nothing on its own:
+    // only getTransaction, or a ledger closed past maxTime, ends the call.
+    let everAccepted = false;
+    let notFound = 0;
+    while (this.now() < deadline) {
+      if (needSend) {
+        const r = await this.server.sendTransaction(tx);
+        if (r.status === 'PENDING' || r.status === 'DUPLICATE') {
+          needSend = false;
+          everAccepted = true;
+          notFound = 0;
+        } else if (r.status === 'ERROR') {
+          const code = sendErrorCode(r.errorResult);
+          if (everAccepted) {
+            needSend = false;
+            notFound = 0;
+          } else if (code === 'txBadSeq') {
+            const done = await this.landed(label, hash, link);
+            if (done) return done;
+            if (await this.sequenceUsed(tx)) return this.record({ label, hash, status: 'REJECTED', link, reason: code, retryable: true });
+          } else {
+            return this.record({ label, hash, status: 'REJECTED', link, reason: code, retryable: code === 'txTooLate' });
+          }
+        }
+        if (needSend) {
+          // TRY_AGAIN_LATER, or txBadSeq behind an earlier transaction: wait and resend.
+          await this.sleep(this.pollMs);
+          continue;
+        }
       }
+      await this.sleep(this.pollMs);
+      const g = await this.server.getTransaction(hash);
+      const done = this.outcome(label, hash, link, g);
+      if (done) return done;
+      if (maxTime !== undefined && Number(g.latestLedgerCloseTime) > maxTime) {
+        return this.record({ label, hash, status: 'TIMEOUT', link, reason: 'expired', retryable: true });
+      }
+      // NOT_FOUND after PENDING: the mempool may have dropped it; resend the same envelope.
+      if (++notFound >= RESEND_EVERY_POLLS) needSend = true;
     }
-    return this.record({ label, hash: r.hash, status: 'TIMEOUT', link });
+    return this.record({ label, hash, status: 'TIMEOUT', link, retryable: false });
+  }
+
+  /** The recorded outcome of `hash`, or undefined while RPC does not know it. */
+  private async landed(label: string, hash: string, link: string): Promise<TxResult | undefined> {
+    return this.outcome(label, hash, link, await this.server.getTransaction(hash));
+  }
+
+  private outcome(label: string, hash: string, link: string, g: rpc.Api.GetTransactionResponse): TxResult | undefined {
+    if (g.status === rpc.Api.GetTransactionStatus.SUCCESS) return this.record({ label, hash, status: 'SUCCESS', link, returnValue: g.returnValue });
+    if (g.status === rpc.Api.GetTransactionStatus.FAILED) {
+      const errors = contractErrorCodes(diagnosticEventsOf(g)).map(guardErrorLabel);
+      return this.record({ label, hash, status: 'FAILED', link, errors });
+    }
+    return undefined;
+  }
+
+  /** True when the source account's sequence has reached the transaction's: it can never apply. */
+  private async sequenceUsed(tx: AnyTx): Promise<boolean> {
+    const inner = 'innerTransaction' in tx ? tx.innerTransaction : tx;
+    const account = await this.server.getAccount(inner.source);
+    return BigInt(account.sequenceNumber()) >= BigInt(inner.sequence);
   }
 
   /** Simulate, assemble and submit a contract call signed by `signer` (also the source). */

@@ -1,6 +1,6 @@
 {
   "name": "@motored-stellar/wallets",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Wallet connector layer for Stellar: a WalletProvider port with a Privy embedded-wallet adapter (raw-hash signing), a Stellar Wallets Kit adapter and a local KeypairWallet for tests and demos (SCF D2).",
   "license": "Apache-2.0",
   "type": "module",

@@ -1,6 +1,6 @@
 {
   "name": "@motored-stellar/ramps",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "SEPA on-ramp and off-ramp for EURC on Stellar behind a RampProvider port: Bridge implementation, in-memory implementation, Travel Rule data, receiver guards and fee gross-up quotes (SCF D5).",
   "license": "Apache-2.0",
   "type": "module",

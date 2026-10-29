@@ -1,9 +1,11 @@
 #![cfg(test)]
-//! Guard v0.9 tests against Trustless Work's DEPLOYED single-release v1 Wasm files:
+//! Guard v0.10 tests against Trustless Work's DEPLOYED single-release v1 Wasm files:
 //!   testnet 7c3f7b2a... (release/resolve/withdraw take trustless_work_address as arg 1)
 //!   mainnet 96d51751... (fee account GBWWSOAT... hardcoded)
-//! Each test in the `lineage!` macro runs for both lineages (modules `tn` and `mn`): 2 x 35 tests,
-//! plus m01, m02 and m03, 73 in total (v0.9 added x08 to x10 and m03, the TTL upkeep tests).
+//! Each test in the `lineage!` macro runs for both lineages (modules `tn` and `mn`): 2 x 39 tests,
+//! plus m01, m02, m03 and m04, 82 in total (v0.9 added x08 to x10 and m03, the TTL upkeep tests;
+//! v0.10 added x11 to x14 and m04: the seller withdrawal that no buyer leg can block, and
+//! mainnet-sized TTL upkeep).
 //!
 //! Prerequisites (see contracts/README.md):
 //!   ./third_party/tw-wasm/fetch.sh     the two Trustless Work Wasm files, verified by SHA-256
@@ -419,13 +421,34 @@ mod $m {
     }
     pub fn setup() -> W { setup_status("awaiting delivery") }
     /// Every entry created with TTL_LONG, so the TTL tests can age the ledger.
-    pub fn setup_long_lived() -> W {
-        let w = world_ttl($wasm, $fee_arg, false, Some(TTL_LONG));
+    pub fn setup_long_lived() -> W { setup_min_ttl(TTL_LONG) }
+    /// Every entry created with `min` ledgers of TTL (the ledger's minimum persistent TTL).
+    pub fn setup_min_ttl(min: u32) -> W {
+        let w = world_ttl($wasm, $fee_arg, false, Some(min));
         if !$fee_arg { give_gbww_trustline(&w); }
         w.env.mock_all_auths();
         let p = props(&w, "awaiting delivery", &w.token);
         twc::Client::new(&w.env, &w.escrow).initialize_escrow(&p);
         w
+    }
+    /// The buyer is a G-account WITHOUT a EURC trustline (it removed it, or Circle froze it): any
+    /// transfer to the buyer reverts. Fund the escrow with `fund_by_third_party`.
+    pub fn setup_buyer_without_trustline() -> W {
+        let mut w = world($wasm, $fee_arg);
+        w.buyer = g_account(&w.env, 0x42);
+        if !$fee_arg { give_gbww_trustline(&w); }
+        w.env.mock_all_auths();
+        let p = props(&w, "awaiting delivery", &w.token);
+        twc::Client::new(&w.env, &w.escrow).initialize_escrow(&p);
+        w
+    }
+    pub fn fund_by_third_party(w: &W, amt: i128) -> bool {
+        let funder = Address::generate(&w.env);
+        w.mint(&funder, amt); w.env.mock_all_auths();
+        let e = tw(w).get_escrow();
+        let r = tw(w).try_fund_escrow(&funder, &e, &amt);
+        if let Err(ref e) = r { println!("    fund err: {:?}", e); }
+        matches!(r, Ok(Ok(_)))
     }
     pub fn tw(w: &W) -> twc::Client<'_> { twc::Client::new(&w.env, &w.escrow) }
     pub fn fund(w: &W, amt: i128) -> bool {
@@ -795,7 +818,7 @@ mod $m {
         assert_eq!(w.bal(&w.escrow), 3, "release pays escrow.amount; the dust stays");
         let mut ds = Map::new(&w.env); ds.set(w.seller.clone(), 3);
         assert!(!resolve(&w, "withdraw_remaining_funds", &ds, K_RES, &w.k_res, None, true));
-        assert!(w.guard_err(9), "BadRecipient");
+        assert!(w.guard_err(17), "Closed: the release was the seller's one payout");
         let mut db = Map::new(&w.env); db.set(w.buyer.clone(), 3);
         let b0 = w.bal(&w.buyer);
         assert!(resolve(&w, "withdraw_remaining_funds", &db, K_RES, &w.k_res, None, true));
@@ -1150,8 +1173,114 @@ mod $m {
         assert!(!w.reg_of().closed, "withdraw_remaining_funds never closes the registration");
     }
 
+    #[test]
+    fn x11_ttl_mainnet_sized_ledger_extends_fresh_entries_at_first_touch() {
+        // every entry starts at mainnet's min_persistent_ttl (120 days); v0.9's 30-day threshold
+        // left that untouched for 90 days
+        let w = setup_min_ttl(MAINNET_MIN_PERSISTENT_TTL);
+        assert_eq!(w.guard_instance_ttl(), TTL_EXTEND_TO, "the constructor already extends the instance");
+        assert!(fund(&w, AMT)); assert!(w.register());
+        assert_eq!(w.reg_ttl(), TTL_EXTEND_TO, "a new registration is extended at once");
+        assert!(TTL_THRESHOLD >= MAINNET_MIN_PERSISTENT_TTL && TTL_EXTEND_TO > TTL_THRESHOLD);
+        assert!(TTL_EXTEND_TO <= 180 * LEDGERS_PER_DAY, "under mainnet's maximum entry TTL");
+    }
+
+    // ------------------------------------------------- v0.10 seller payout without a buyer leg
+    #[test]
+    fn x12_buyer_without_trustline_and_dust_cannot_block_the_claim_path_seller_payout() {
+        let w = setup_buyer_without_trustline();
+        assert!(fund_by_third_party(&w, AMT)); assert!(w.register());
+        w.env.ledger().with_mut(|l| l.timestamp += 60);
+        assert!(dispute(&w, &w.platform));
+        // the attack: 1 unit of dust makes every resolve_dispute need a buyer leg, which reverts
+        w.dust(1);
+        let claim = w.anchor_claim(&w.escrow, 121, 8, 21);
+        w.env.ledger().with_mut(|l| l.timestamp += 7 * DAY);
+        let mut d = Map::new(&w.env); d.set(w.seller.clone(), AMT); d.set(w.buyer.clone(), 1);
+        assert!(!resolve(&w, "resolve_dispute", &d, K_RES, &w.k_res, Some(claim.clone()), true), "buyer leg reverts: the SAC refuses (trustline entry is missing)");
+        let mut dall = Map::new(&w.env); dall.set(w.seller.clone(), AMT + 1);
+        assert!(!resolve(&w, "resolve_dispute", &dall, K_RES, &w.k_res, Some(claim.clone()), true));
+        assert!(w.guard_err(28), "SellerOverAmount");
+        // v0.10: the seller is paid alone through withdraw_remaining_funds, under the same rules
+        assert!(!resolve(&w, "withdraw_remaining_funds", &dall, K_RES, &w.k_res, Some(claim.clone()), true));
+        assert!(w.guard_err(28), "the cap holds on the withdrawal path");
+        let mut ds = Map::new(&w.env); ds.set(w.seller.clone(), AMT);
+        assert!(!resolve(&w, "withdraw_remaining_funds", &ds, K_RES, &w.k_res, None, true));
+        assert!(w.guard_err(8), "NoClaim: the withdrawal path needs the claim too");
+        assert!(resolve(&w, "withdraw_remaining_funds", &ds, K_RES, &w.k_res, Some(claim.clone()), true));
+        println!("[{}] x12 seller withdrawal past a trustline-less buyer: seller {} escrow left {}", stringify!($m), w.bal(&w.seller), w.bal(&w.escrow));
+        assert!(w.bal(&w.seller) >= net(AMT) && w.bal(&w.seller) <= net(AMT) + 2);
+        assert_eq!(w.bal(&w.escrow), 1, "the dust stays for the buyer");
+        assert!(w.reg_of().closed);
+        // cumulative cap: the seller's one payout is spent
+        let mut d1 = Map::new(&w.env); d1.set(w.seller.clone(), 1);
+        assert!(!resolve(&w, "withdraw_remaining_funds", &d1, K_RES, &w.k_res, Some(claim), true));
+        assert!(w.guard_err(17), "Closed");
+    }
+
+    #[test]
+    fn x13_buyer_without_trustline_cannot_block_the_approval_path_seller_payout() {
+        let w = setup_buyer_without_trustline();
+        assert!(fund_by_third_party(&w, AMT)); assert!(w.register());
+        assert!(ship_and_approve(&w)); assert!(dispute(&w, &w.seller)); assert!(w.register());
+        w.dust(1);
+        let mut ds = Map::new(&w.env); ds.set(w.seller.clone(), AMT);
+        assert!(!resolve(&w, "withdraw_remaining_funds", &ds, K_RES, &w.k_res, None, true));
+        assert!(w.guard_err(10), "TooEarly: inside the contest window");
+        w.env.ledger().with_mut(|l| l.timestamp += 7 * DAY);
+        let mut d = Map::new(&w.env); d.set(w.seller.clone(), AMT); d.set(w.buyer.clone(), 1);
+        assert!(!resolve(&w, "resolve_dispute", &d, K_RES, &w.k_res, None, true), "buyer leg reverts");
+        let mut dall = Map::new(&w.env); dall.set(w.seller.clone(), AMT + 1);
+        assert!(!resolve(&w, "withdraw_remaining_funds", &dall, K_RES, &w.k_res, None, true));
+        assert!(w.guard_err(28), "SellerOverAmount");
+        assert!(resolve(&w, "withdraw_remaining_funds", &ds, K_RES, &w.k_res, None, true));
+        assert!(w.bal(&w.seller) >= net(AMT) && w.bal(&w.seller) <= net(AMT) + 2, "the release's net");
+        assert_eq!(w.bal(&w.escrow), 1);
+        // the buyer's remainder waits for the buyer's trustline; the guard still allows it
+        let mut db = Map::new(&w.env); db.set(w.buyer.clone(), 1);
+        assert!(!resolve(&w, "withdraw_remaining_funds", &db, K_RES, &w.k_res, None, true), "the token refuses, not the guard");
+        assert!(!w.guard_err(17) && !w.guard_err(9));
+    }
+
+    #[test]
+    fn x14_split_withdrawal_closes_and_the_buyer_share_stays_withdrawable() {
+        let w = setup();
+        assert!(fund(&w, AMT)); assert!(w.register());
+        w.env.ledger().with_mut(|l| l.timestamp += 60);
+        assert!(dispute(&w, &w.platform));
+        let claim = w.anchor_claim(&w.escrow, 131, 8, 31);
+        w.env.ledger().with_mut(|l| l.timestamp += 7 * DAY);
+        // a partial seller share, paid alone
+        let s = AMT * 6 / 10;
+        let mut ds = Map::new(&w.env); ds.set(w.seller.clone(), s);
+        assert!(resolve(&w, "withdraw_remaining_funds", &ds, K_RES, &w.k_res, Some(claim.clone()), true));
+        assert!(w.reg_of().closed);
+        // no second seller payout on either entry point
+        let mut d1 = Map::new(&w.env); d1.set(w.seller.clone(), 1);
+        assert!(!resolve(&w, "withdraw_remaining_funds", &d1, K_RES, &w.k_res, Some(claim.clone()), true));
+        assert!(w.guard_err(17), "Closed");
+        let mut dr = Map::new(&w.env); dr.set(w.seller.clone(), 1); dr.set(w.buyer.clone(), AMT - s - 1);
+        assert!(!resolve(&w, "resolve_dispute", &dr, K_RES, &w.k_res, Some(claim), true));
+        assert!(w.guard_err(17), "Closed");
+        // the buyer's share still leaves through the buyer-only withdrawal
+        let mut db = Map::new(&w.env); db.set(w.buyer.clone(), AMT - s);
+        let b0 = w.bal(&w.buyer);
+        assert!(resolve(&w, "withdraw_remaining_funds", &db, K_RES, &w.k_res, None, true));
+        assert_eq!(w.bal(&w.buyer) - b0, net(AMT - s));
+        assert_eq!(w.bal(&w.escrow), 0);
+    }
+
 }
     };
+}
+
+/// A G-account address with no ledger entries (so no trustline for any asset).
+pub fn g_account(env: &Env, seed: u8) -> Address {
+    let sc = ScAddress::Account(xdr::AccountId(xdr::PublicKey::PublicKeyTypeEd25519(
+        xdr::Uint256([seed; 32]),
+    )));
+    let v = Val::try_from_val(env, &ScVal::Address(sc)).unwrap();
+    Address::try_from_val(env, &v).unwrap()
 }
 
 /// Initial TTL of every entry in the long-lived TTL test world (under the test ledger's
@@ -1431,6 +1560,40 @@ fn m02_metering_wasm_guard_depth32_seller_resolution_and_release() {
 #[test]
 fn m03_wasm_guard_ttl_upkeep() {
     let w = world_ttl(TN_WASM, true, true, Some(TTL_LONG));
+    tn_escrow_funded_and_registered(&w);
+    w.advance_ledgers(TTL_LONG - TTL_THRESHOLD + 1_000);
+    let (r0, i0) = (w.reg_ttl(), w.guard_instance_ttl());
+    assert!(r0 < TTL_THRESHOLD && i0 < TTL_THRESHOLD);
+    assert!(w.register());
+    println!(
+        "[m03] Wasm guard register_escrow TTL upkeep: reg {} -> {}, instance {} -> {}",
+        r0,
+        w.reg_ttl(),
+        i0,
+        w.guard_instance_ttl()
+    );
+    assert_eq!(w.reg_ttl(), TTL_EXTEND_TO);
+    assert_eq!(w.guard_instance_ttl(), TTL_EXTEND_TO);
+}
+
+/// v0.10 on the built Wasm guard, testnet lineage, on a ledger whose minimum persistent TTL is
+/// mainnet's (120 days): the constructor and the first registration extend at once.
+#[test]
+fn m04_wasm_guard_ttl_upkeep_on_a_mainnet_sized_ledger() {
+    let w = world_ttl(TN_WASM, true, true, Some(MAINNET_MIN_PERSISTENT_TTL));
+    assert_eq!(w.guard_instance_ttl(), TTL_EXTEND_TO);
+    tn_escrow_funded_and_registered(&w);
+    println!(
+        "[m04] Wasm guard, min_persistent_ttl {}: reg {}, instance {}",
+        MAINNET_MIN_PERSISTENT_TTL,
+        w.reg_ttl(),
+        w.guard_instance_ttl()
+    );
+    assert_eq!(w.reg_ttl(), TTL_EXTEND_TO);
+}
+
+/// Testnet-lineage escrow naming the guard in both roles, funded by the buyer and registered.
+fn tn_escrow_funded_and_registered(w: &W) {
     w.env.mock_all_auths();
     let tw = tnc::Client::new(&w.env, &w.escrow);
     let mut ms = soroban_sdk::Vec::new(&w.env);
@@ -1470,17 +1633,4 @@ fn m03_wasm_guard_ttl_upkeep() {
     let e = tw.get_escrow();
     tw.fund_escrow(&w.buyer, &e, &AMT);
     assert!(w.register());
-    w.advance_ledgers(TTL_LONG - TTL_THRESHOLD + 1_000);
-    let (r0, i0) = (w.reg_ttl(), w.guard_instance_ttl());
-    assert!(r0 < TTL_THRESHOLD && i0 < TTL_THRESHOLD);
-    assert!(w.register());
-    println!(
-        "[m03] Wasm guard register_escrow TTL upkeep: reg {} -> {}, instance {} -> {}",
-        r0,
-        w.reg_ttl(),
-        i0,
-        w.guard_instance_ttl()
-    );
-    assert_eq!(w.reg_ttl(), TTL_EXTEND_TO);
-    assert_eq!(w.guard_instance_ttl(), TTL_EXTEND_TO);
 }

@@ -299,7 +299,7 @@ dependencies = [
 
 [[package]]
 name = "claim-registry"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "sha2",
  "soroban-sdk",
@@ -692,7 +692,7 @@ checksum = "40404c3f5f511ec4da6fe866ddf6a717c309fdbb69fbbad7b0f3edab8f2e835f"
 
 [[package]]
 name = "fake-escrow"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "soroban-sdk",
 ]
@@ -1052,7 +1052,7 @@ checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 
 [[package]]
 name = "motored-escrow-guard"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "ed25519-dalek",
  "sha2",

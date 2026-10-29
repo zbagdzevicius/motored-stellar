@@ -124,6 +124,10 @@ export interface SubmitResult {
   status: 'SUCCESS' | 'FAILED' | 'REJECTED' | 'TIMEOUT';
   returnValue?: xdr.ScVal;
   feeCharged?: bigint;
+  /** Why it did not land, when known (a result code such as `txBadSeq`, or `expired`). */
+  reason?: string;
+  /** True when this transaction can no longer land, so rebuilding and re-signing cannot double-apply it. */
+  retryable?: boolean;
 }
 
 /** Reads accounts, simulates and submits transactions. */
@@ -207,12 +211,15 @@ export interface RawContractEvent {
 }
 
 export interface EventQuery {
+  /** At most `RPC_MAX_CONTRACT_IDS` ids: Stellar RPC rejects a larger filter. */
   contractIds: string[];
   /**
    * Topic filters in RPC form: each filter is a list of base64 ScVals or "*"
-   * (any single segment). An event matches if any filter matches.
+   * (any single segment). An event matches if any filter matches. RPC takes at
+   * most `RPC_MAX_TOPIC_FILTERS` per filter; adapters split longer lists.
    */
   topics?: string[][];
+  /** First ledger to scan; must lie inside the source's retention window. Ignored with `cursor`. */
   startLedger?: number;
   cursor?: string;
   limit?: number;
@@ -220,13 +227,37 @@ export interface EventQuery {
 
 export interface EventPage {
   events: RawContractEvent[];
-  /** Pass back as `cursor` to continue after the last event. */
+  /**
+   * Pass back as `cursor` to continue after the last event. Stellar RPC scans a
+   * bounded ledger range per request, so a page can be empty while the cursor
+   * still sits below `latestLedger`: keep paging until it reaches it.
+   */
   cursor?: string;
   latestLedger?: number;
+  oldestLedger?: number;
 }
 
 export interface EventSource {
   getEvents(q: EventQuery): Promise<EventPage>;
+  /** The ledgers the source still holds (RPC: getHealth). Readers clamp `startLedger` to it. */
+  ledgerRange?(): Promise<{ oldestLedger: number; latestLedger: number }>;
+}
+
+/** Stellar RPC getEvents limits (stellar-rpc `getevents.go`): contract ids per filter, topic filters per filter, filters per request. */
+export const RPC_MAX_CONTRACT_IDS = 5;
+export const RPC_MAX_TOPIC_FILTERS = 5;
+export const RPC_MAX_FILTERS = 5;
+
+/** Ledger sequence encoded in an RPC event id or cursor (`<toid>-<index>`, TOID ledger in the high 32 bits). */
+export function cursorLedger(cursor: string): number {
+  const toid = cursor.split('-')[0];
+  if (!toid || !/^\d+$/.test(toid)) return Number.POSITIVE_INFINITY;
+  return Number(BigInt(toid) >> 32n);
+}
+
+/** A cursor just past every event of `ledger`, in RPC's format. */
+export function ledgerEndCursor(ledger: number): string {
+  return `${((BigInt(ledger) << 32n) | 0xffffffffn).toString().padStart(19, '0')}-4294967295`;
 }
 
 /** True when `event` matches an RPC-style topic filter. */
@@ -236,33 +267,61 @@ export function topicMatches(event: RawContractEvent, filter: string[]): boolean
   return filter.every((seg, i) => seg === '*' || seg === '**' || seg === event.topic[i]);
 }
 
-/** Event source over a fixed list, for example a committed `getEvents` response. */
+export interface InMemoryEventSourceOptions {
+  /** Oldest retained ledger. When set, a start ledger below it is refused, as RPC does. */
+  oldestLedger?: number;
+  /** Latest ledger. Default: the last event's ledger. */
+  latestLedger?: number;
+  /**
+   * Ledgers scanned per request, as RPC does. When set, a short page ends with a
+   * cursor at the end of the scanned range, which can be below `latestLedger`.
+   */
+  scanLedgers?: number;
+}
+
+/** Event source over a fixed list, for example a committed `getEvents` response. Enforces RPC's contract-id limit. */
 export class InMemoryEventSource implements EventSource {
   private readonly events: RawContractEvent[];
-  constructor(events: RawContractEvent[] = []) {
+  /** Every query received, for assertions. */
+  readonly queries: EventQuery[] = [];
+  constructor(events: RawContractEvent[] = [], private readonly opts: InMemoryEventSourceOptions = {}) {
     this.events = [...events].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   }
   /** Builds a source from a JSON-RPC `getEvents` response (`{ result: { events } }`) or its `result`. */
-  static fromRpcResponse(json: unknown): InMemoryEventSource {
+  static fromRpcResponse(json: unknown, opts: InMemoryEventSourceOptions = {}): InMemoryEventSource {
     const j = json as { result?: { events?: RawContractEvent[] }; events?: RawContractEvent[] };
-    return new InMemoryEventSource(j.result?.events ?? j.events ?? []);
+    return new InMemoryEventSource(j.result?.events ?? j.events ?? [], opts);
   }
   push(...events: RawContractEvent[]): void {
     this.events.push(...events);
     this.events.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   }
+  async ledgerRange(): Promise<{ oldestLedger: number; latestLedger: number }> {
+    const latestLedger = this.opts.latestLedger ?? this.events.at(-1)?.ledger ?? 1;
+    return { oldestLedger: this.opts.oldestLedger ?? Math.min(this.events[0]?.ledger ?? 1, latestLedger), latestLedger };
+  }
   async getEvents(q: EventQuery): Promise<EventPage> {
+    this.queries.push(q);
+    if (q.contractIds.length > RPC_MAX_CONTRACT_IDS) throw new RangeError(`contractIds: at most ${RPC_MAX_CONTRACT_IDS} per filter`);
+    const { oldestLedger, latestLedger } = await this.ledgerRange();
+    const start = q.startLedger ?? 0;
+    if (q.cursor === undefined && this.opts.oldestLedger !== undefined && (start < oldestLedger || start > latestLedger)) {
+      throw new RangeError(`startLedger must be between the oldest ledger: ${oldestLedger} and the latest ledger: ${latestLedger}`);
+    }
+    const scanEnd = this.opts.scanLedgers ? Math.min((q.cursor === undefined ? start : cursorLedger(q.cursor) + 1) + this.opts.scanLedgers - 1, latestLedger) : Infinity;
     const ids = new Set(q.contractIds);
     const limit = q.limit ?? 100;
     const out = this.events.filter(
       (e) =>
         ids.has(e.contractId) &&
-        (q.cursor === undefined ? e.ledger >= (q.startLedger ?? 0) : e.id > q.cursor) &&
+        e.ledger <= scanEnd &&
+        (q.cursor === undefined ? e.ledger >= start : e.id > q.cursor) &&
         (!q.topics || q.topics.length === 0 || q.topics.some((f) => topicMatches(e, f))),
     );
     const page = out.slice(0, limit);
     const last = page[page.length - 1];
-    return { events: page, cursor: last ? last.id : q.cursor, latestLedger: this.events.at(-1)?.ledger };
+    const cursor = page.length < limit && Number.isFinite(scanEnd) ? ledgerEndCursor(scanEnd) : last ? last.id : q.cursor;
+    return { events: page, cursor, latestLedger, oldestLedger };
   }
 }
 

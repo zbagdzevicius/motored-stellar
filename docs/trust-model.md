@@ -13,7 +13,7 @@ such a record, delays it by 7 days, and lets an offline key revoke it.
 | Seller wallet | Seller | Receive; dispute; cash out through a ramp | The platform does not hold it |
 | Platform (fee account) | Platform | Receive fees; open a dispute on any escrow; change escrow properties while unfunded; append unapproved milestones to a funded escrow (which only blocks its release); send refund top-ups | Change the roles, amount, fee or receiver of a funded escrow; move escrowed funds |
 | Release key | Platform release service | Co-authorise a release that Trustless Work has already conditioned on the buyer's approval and no open dispute | Release without the buyer's approval; pay anyone but the fixed seller and the two fee accounts |
-| Resolver key | The platform, or a licensed party; a service account separate from the web service | Resolve a dispute; withdraw excess to the buyer | Pay anyone but that escrow's buyer or seller; pay the seller more than the escrow amount; pay the seller without either a verified claim anchored after full funding and at least 7 days earlier, or the buyer's approval on record, a dispute, and 7 days without a buyer contest |
+| Resolver key | The platform, or a licensed party; a service account separate from the web service | Resolve a dispute; withdraw to the buyer; withdraw the seller's share alone under the seller rules, once (v0.10, so a buyer leg cannot block it) | Pay anyone but that escrow's buyer or seller; pay the seller more than the escrow amount; pay the seller without either a verified claim anchored after full funding and at least 7 days earlier, or the buyer's approval on record, a dispute, and 7 days without a buyer contest |
 | Break-glass key | Platform, offline | Refund a disputed escrow's whole balance to its buyer | Pay the seller or anyone else; open a dispute |
 | Registry issuer | Platform, separate service account | Anchor claim roots | Move funds; revoke |
 | Registry revoker | Platform, offline | Revoke an anchored batch, so none of its claims verify again | Anchor; move funds |
@@ -21,11 +21,22 @@ such a record, delays it by 7 days, and lets an offline key revoke it.
 | Guard admin | Platform, offline | Propose new release, resolver and break-glass keys; they apply after a public 7-day timelock | Change keys without the public delay; move funds directly |
 | Resolver admin | The resolver-key holder | Replace the resolver key at once | Change any other key |
 
-Every signing key above is a raw ed25519 key that holds no funds. In this repository the
-`Signer` and `KeyStore` ports abstract them; the in-memory implementations generate fresh keys at
-runtime and never persist them. Production deployments should hold each key on its own service
-identity, log every signature with its order reference, and keep the admin, revoker and
-break-glass keys offline.
+The release, resolver and break-glass keys are raw ed25519 keys stored in the guard; they hold no
+funds and rotate in-contract (7-day timelock, or at once for the resolver key). The guard admin,
+the resolver admin and the registry's issuer and revoker are Stellar addresses fixed at
+deployment, with no setter, and the guard's registry pointer is fixed too. Each is therefore a
+multisig G-account, never a bare key: its signers rotate at the account level (add the new signer,
+set the master weight to 0, remove the old one) without touching either contract. In this
+repository the `Signer` and `KeyStore` ports abstract the keys; the in-memory implementations
+generate fresh keys at runtime and never persist them. Production deployments should hold each
+key on its own service identity, log every signature with its order reference, and keep the
+admin, revoker and break-glass keys offline.
+
+**Recovery after an issuer leak.** The offline revoker revokes every batch the leaked signer
+anchored inside the 7-day wait, and the leaked signer is removed from the issuer account. If the
+issuer account itself must be replaced, a new registry and a new guard pointing to it are
+deployed for new escrows, while the revoker keeps watching the old registry until its last escrow
+closes. Payouts still need the resolver key, so a leaked issuer alone moves no funds.
 
 ## What the platform's keys can and cannot do, stated plainly
 

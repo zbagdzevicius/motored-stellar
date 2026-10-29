@@ -1,6 +1,6 @@
 {
   "name": "@motored-stellar/example-order-flow",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "private": true,
   "description": "One marketplace order walked through every port: in-memory by default, real testnet adapters with --testnet (SCF D4 mock half, D13).",
   "license": "Apache-2.0",
@@ -14,10 +14,10 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@motored-stellar/claims": "0.9.0",
-    "@motored-stellar/escrow": "0.9.0",
-    "@motored-stellar/reconciler": "0.9.0",
-    "@motored-stellar/wallets": "0.9.0",
+    "@motored-stellar/claims": "0.10.0",
+    "@motored-stellar/escrow": "0.10.0",
+    "@motored-stellar/reconciler": "0.10.0",
+    "@motored-stellar/wallets": "0.10.0",
     "@stellar/stellar-sdk": "17.4.0"
   },
   "devDependencies": {

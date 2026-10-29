@@ -56,3 +56,21 @@ describe('RpcEventSource paging', () => {
     expect(calls).toBe(1);
   });
 });
+
+describe('RpcEventSource retention window', () => {
+  it('refuses a start ledger the RPC no longer holds instead of reading a short window', async () => {
+    let calls = 0;
+    const server = {
+      getHealth: async () => ({ status: 'healthy', oldestLedger: 5_340_000, latestLedger: 5_460_959, ledgerRetentionWindow: 120_960 }),
+      getEvents: async () => {
+        calls++;
+        return { events: [], cursor: cursorAt(5_460_959), latestLedger: 5_460_959 };
+      },
+    } as unknown as ConstructorParameters<typeof RpcEventSource>[0];
+    await expect(new RpcEventSource(server).transfers(TOKEN, new Set([ESCROW]), 5_000_000)).rejects.toThrow(/--observations/);
+    await expect(new RpcEventSource(server).transfers(TOKEN, new Set([ESCROW]), 0)).rejects.toThrow(/>= 1/);
+    expect(calls).toBe(0);
+    await new RpcEventSource(server).transfers(TOKEN, new Set([ESCROW]), 5_340_000);
+    expect(calls).toBe(1);
+  });
+});
