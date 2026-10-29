@@ -59,9 +59,9 @@ marketplace plugs in, there is a small typed port (`OrderSource`, `DeliveryOracl
   on 24 Oct 2026, built from the lab crate `lab-guard`, so their Wasm hashes differ from this
   repository's build) and moved here with the same logic for run 4 on 28 Oct 2026. The initial
   published history (pushed 29 Oct 2026) ends at the tag `pre-award-baseline`; diff any billed deliverable against that tag.
-- **Tests:** 76 Rust contract tests (guard 68, claim registry 8) and 382 TypeScript tests passed
-  locally on 27 Oct 2026, and 388 TypeScript tests (with the run-5 helpers) and then 391 (with the run-6 helpers) on 29 Oct 2026; CI run links will be logged in [docs/verification.md](docs/verification.md)
-  after the first push.
+- **Tests:** 76 Rust contract tests (guard 68, claim registry 8) and 391 TypeScript tests, run by
+  [GitHub Actions](https://github.com/zbagdzevicius/motored-stellar/actions) on every push; the first
+  run (29 Oct 2026, all jobs green) and later runs are logged in [docs/verification.md](docs/verification.md).
 - **Not yet done (planned, see the status table below):** runs with Circle's testnet EURC; live Privy, Stellar Wallets Kit and Bridge
   sandbox runs; the remaining refused paths as landed failed transactions (four are landed in run 6;
   the others are unit tests plus enforce-mode simulations); guard and registry Wasm verified on stellar.expert from a tagged
@@ -134,7 +134,7 @@ can do what with which key: [docs/trust-model.md](docs/trust-model.md).
 
 ## Quickstart
 
-Requirements: Node >= 20, Rust 1.93.0 with the `wasm32v1-none` target (pinned by
+Requirements: Node >= 22.12, Rust 1.93.0 with the `wasm32v1-none` target (pinned by
 `contracts/rust-toolchain.toml`) and the [Stellar CLI](https://developers.stellar.org/docs/tools/cli)
 (the lab used 23.4.0).
 
