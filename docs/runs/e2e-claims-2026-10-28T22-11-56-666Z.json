@@ -1,0 +1,217 @@
+{
+  "network": "testnet",
+  "guard": "CBYWR2P3PEJS2IYIHVVQ2OHXM2ZHGKZDVVDIWI3JCUW7YE4VXNY467EX",
+  "registry": "CD27AQMH2QGS2IRJA26LKNRH6ZQFZZ7EI4QWC5PIRVRJQ4KSTY3EYHPZ",
+  "sac": "CDDP3WONCQS5EWCTIITACO3FKIEY6BS5UB6ILE4MT3UGFO25CDYOY4VF",
+  "runLog": [
+    {
+      "label": "D: atomic deploy+init via Trustless Work deployer",
+      "hash": "8340e53c5396a9f27281e86bd3cc77db560552040a81975a94625ffe804091b1",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/8340e53c5396a9f27281e86bd3cc77db560552040a81975a94625ffe804091b1"
+    },
+    {
+      "label": "D escrow = CDLO52RBMHUQ5C6OQ77ALPS44PLZYI3JNKIFTNPIR4KHZ3PKT5JSMH2E",
+      "note": null
+    },
+    {
+      "label": "guard.check_escrow(D) before funding:",
+      "note": "Ok"
+    },
+    {
+      "label": "D: buyer fund_escrow 1000000000",
+      "hash": "e82c0f688bec0d18cf6cee3bd4929f4b210b697c5a084951970a4b5a3dfdbd79",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/e82c0f688bec0d18cf6cee3bd4929f4b210b697c5a084951970a4b5a3dfdbd79"
+    },
+    {
+      "label": "D (funded_at): register_escrow",
+      "hash": "a2e1aae321012381178d6e2cc40669591927e37f0aeebcba6f7553b34b02efa1",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/a2e1aae321012381178d6e2cc40669591927e37f0aeebcba6f7553b34b02efa1"
+    },
+    {
+      "label": "D: platform dispute_escrow (buyer stays silent)",
+      "hash": "f0f7c7312fa1ec1add90e113e13630436641360e80d4b6f159f9414adcce6627",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/f0f7c7312fa1ec1add90e113e13630436641360e80d4b6f159f9414adcce6627"
+    },
+    {
+      "label": "D (records dispute): register_escrow",
+      "hash": "74334e92b5684cd178470e3979d8865837c2ac398ab0d59abe4e404f428eb90e",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/74334e92b5684cd178470e3979d8865837c2ac398ab0d59abe4e404f428eb90e"
+    },
+    {
+      "label": "D seller payout without a claim (guard NoClaim=8)",
+      "refused": "Error(Contract, #8) NoClaim (if raised by the guard)"
+    },
+    {
+      "label": "D: anchor claim batch 1793225317267 (proof depth 32)",
+      "hash": "840d9fb4d6c96cc43c7be4966ab937a2f5123c085428a1959c7a322a704bd52e",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/840d9fb4d6c96cc43c7be4966ab937a2f5123c085428a1959c7a322a704bd52e"
+    },
+    {
+      "label": "D batch root",
+      "note": "9070f076fcaefafaa45649b2f0336668d42678a0c5489d38a9d7b6dda06a4cae"
+    },
+    {
+      "label": "D seller payout before the delay (guard TooEarly=10)",
+      "refused": "Error(Contract, #10) TooEarly (if raised by the guard)"
+    },
+    {
+      "label": "D seller payout with a tampered claim (guard NoClaim=8)",
+      "refused": "Error(Contract, #8) NoClaim (if raised by the guard)"
+    },
+    {
+      "label": "D registration",
+      "note": {
+        "amount": "1000000000",
+        "approved_at": null,
+        "buyer": "GDXXMBLWASPHLHCTZNXITELCS3CMWIVTUWHZM336AWZSKXDNNQOMONMC",
+        "closed": false,
+        "contested_at": null,
+        "disputed_at": "1793225315",
+        "funded_at": "1793225305",
+        "registered_at": "1793225305",
+        "seller": "GDJMHIH3UWWD4CGZ47JJXXPIFOBXAKBEZSUT3LANWGP6K2AMR6S3PQBH"
+      }
+    },
+    {
+      "label": "E: atomic deploy+init via Trustless Work deployer",
+      "hash": "f9f016bc9e35f6b4bdb0c4b581d728f5d10bf107dc7fc82077a21f7309221fed",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/f9f016bc9e35f6b4bdb0c4b581d728f5d10bf107dc7fc82077a21f7309221fed"
+    },
+    {
+      "label": "E escrow = CCOCR767OCY2VZYCQOVJVY7BISAO4U4PTQVC5IIOXU4IM6VESRUZKKF6",
+      "note": null
+    },
+    {
+      "label": "guard.check_escrow(E) before funding:",
+      "note": "Ok"
+    },
+    {
+      "label": "E: buyer fund_escrow 1000000000",
+      "hash": "8caa5d50f13eac56e8e559a821f737a816f5bc8d01cf2b0539e336d041f66851",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/8caa5d50f13eac56e8e559a821f737a816f5bc8d01cf2b0539e336d041f66851"
+    },
+    {
+      "label": "E (funded_at): register_escrow",
+      "hash": "fda8088b993f837bedcc582d8a8ec12fe2ac6d9361efdf9f25df8696c1eabaef",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/fda8088b993f837bedcc582d8a8ec12fe2ac6d9361efdf9f25df8696c1eabaef"
+    },
+    {
+      "label": "E: buyer approve_milestone",
+      "hash": "3bbaccc5cd2e10001b91cae6c638e57a8e42710ef34e5e46f903364065922be8",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/3bbaccc5cd2e10001b91cae6c638e57a8e42710ef34e5e46f903364065922be8"
+    },
+    {
+      "label": "E (records approval): register_escrow",
+      "hash": "5dc27e1e5cc2ebdaf3be194d94c68959623edb1eb0abff819ca5a1035250e095",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/5dc27e1e5cc2ebdaf3be194d94c68959623edb1eb0abff819ca5a1035250e095"
+    },
+    {
+      "label": "E: seller dispute_escrow",
+      "hash": "8325639a4043363d9c8e991c37b4ab5f2ee470b03fa34424dbfcfe60754437ac",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/8325639a4043363d9c8e991c37b4ab5f2ee470b03fa34424dbfcfe60754437ac"
+    },
+    {
+      "label": "E (records dispute; contest window opens): register_escrow",
+      "hash": "a788679fa84c1e45227c5ff2465c56abf60b28501dd18f92573cb30189fb409b",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/a788679fa84c1e45227c5ff2465c56abf60b28501dd18f92573cb30189fb409b"
+    },
+    {
+      "label": "E: buyer contest on the guard (inside the window)",
+      "hash": "ed5a7e8dc83ccf6488eee929ede31275bb8dbbcfa1bdde502671a5561b27d7d3",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/ed5a7e8dc83ccf6488eee929ede31275bb8dbbcfa1bdde502671a5561b27d7d3"
+    },
+    {
+      "label": "E registration",
+      "note": {
+        "amount": "1000000000",
+        "approved_at": "1793225350",
+        "buyer": "GDXXMBLWASPHLHCTZNXITELCS3CMWIVTUWHZM336AWZSKXDNNQOMONMC",
+        "closed": false,
+        "contested_at": "1793225365",
+        "disputed_at": "1793225360",
+        "funded_at": "1793225340",
+        "registered_at": "1793225340",
+        "seller": "GDJMHIH3UWWD4CGZ47JJXXPIFOBXAKBEZSUT3LANWGP6K2AMR6S3PQBH"
+      }
+    },
+    {
+      "label": "waiting 131 s (testnet delay 120 s, contest window 120 s; production 7 days)",
+      "note": null
+    },
+    {
+      "label": "D seller payout against the anchored depth-32 claim: enforce-sim cost",
+      "note": {
+        "instructions": 4955849,
+        "minResourceFee": "33282"
+      }
+    },
+    {
+      "label": "D seller payout against the anchored depth-32 claim",
+      "hash": "6cc1b9f648b57bed8c7944c6f18283a39ccdb95b516ad095f3370d9ec52541d0",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/6cc1b9f648b57bed8c7944c6f18283a39ccdb95b516ad095f3370d9ec52541d0"
+    },
+    {
+      "label": "D seller received",
+      "note": "950000000"
+    },
+    {
+      "label": "D public re-check of the claim",
+      "note": {
+        "ok": true,
+        "leaf": "722d7dea04ffcbfd58a94ba60fac13b8fd9773184203c6c4e2b73b30a6628697",
+        "computedRoot": "9070f076fcaefafaa45649b2f0336668d42678a0c5489d38a9d7b6dda06a4cae",
+        "registryVerify": true,
+        "reasons": [],
+        "anchoredAt": "1793225320",
+        "fundedAt": "1793225305",
+        "anchoredAfterFunding": true
+      }
+    },
+    {
+      "label": "E seller payout after the window, contested (guard Contested=25)",
+      "refused": "Error(Contract, #25) Contested (if raised by the guard)"
+    },
+    {
+      "label": "E resolve_dispute: whole balance to the buyer: enforce-sim cost",
+      "note": {
+        "instructions": 3243554,
+        "minResourceFee": "28604"
+      }
+    },
+    {
+      "label": "E resolve_dispute: whole balance to the buyer",
+      "hash": "224ab6396e6a07150477aa622d0909b1070bfae9707eeb424c5a2db0529cbd15",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/224ab6396e6a07150477aa622d0909b1070bfae9707eeb424c5a2db0529cbd15"
+    },
+    {
+      "label": "E buyer received 950000000 of 1000000000; top-up 50000000",
+      "note": null
+    },
+    {
+      "label": "E: platform refund top-up 50000000",
+      "hash": "9c014de424b2a69f23a23239c693853264ce716f3c3b96464a395c4ae28686cb",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/9c014de424b2a69f23a23239c693853264ce716f3c3b96464a395c4ae28686cb"
+    },
+    {
+      "label": "E buyer net after top-up",
+      "note": "1000000000"
+    }
+  ]
+}

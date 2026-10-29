@@ -10,6 +10,13 @@ updates:
     groups:
       npm-dependencies:
         patterns: ["*"]
+    # Toolchain majors are moved by hand: TypeScript 7 drops `baseUrl` (TS5102), which the
+    # workspace tsconfigs use, and @types/node follows the Node versions CI tests (22, 24).
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /

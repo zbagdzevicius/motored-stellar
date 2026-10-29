@@ -22,6 +22,44 @@ enforce-mode simulation) and the buyer contest followed by a full refund; every 
 | 27 Oct 2026 | Local (not CI) | `cargo test`: 76 passed (guard 68, claim registry 8); vitest: 382 passed across the workspaces; typecheck clean; the in-memory example ran |
 | 29 Oct 2026 | Local (not CI) | vitest: 388 passed across the workspaces (adds the run-5 helpers and the depth-32 proof builder); docs lint clean; scripts typecheck clean |
 | 29 Oct 2026 | GitHub Actions | First run on push of the published history, 29 Oct 2026: all four jobs green (contracts, TypeScript on Node 20 and 22, secrets and lint): https://github.com/zbagdzevicius/motored-stellar/actions/runs/40831236550 . Every later push runs the same workflow: https://github.com/zbagdzevicius/motored-stellar/actions |
+| 29 Oct 2026 | GitHub Actions | Run at tag `pre-award-filing` (commit `2093a3b`), all four jobs green (contracts, TypeScript on Node 22 and 24, secrets and lint): `cargo test` 76 passed (guard 68, claim registry 8); vitest 393 passed across the eight workspaces, identical on Node 22 and 24: https://github.com/zbagdzevicius/motored-stellar/actions/runs/40839759344 . The README quotes this row. |
+
+Tag `pre-award-filing` (commit `2093a3b`) marks the code at filing, and the CI row above is pinned to it.
+Commits after the tag change documentation, code comments, the Dependabot config and the published run logs in
+[`docs/runs/`](runs/) only; no contract, package or script logic changes
+(`git diff pre-award-filing -- contracts packages scripts` shows comment and README lines only).
+
+## On-chain metric, dry run on testnet (29 Oct 2026)
+
+`npm run metric` (scripts/metric) read live testnet RPC from ledger 5431300 for a footprint of the five
+run 4-5 escrows: A (buyer-approved release), B (dispute refund), C (partial funding, break-glass
+refund), D (silent-buyer seller payout against an anchored claim) and E (buyer contest, then refund);
+guard `CBYWR2P3...Y467EX`, registry `CD27AQMH...3EYHPZ`, token the XEUR SAC `CDDP3WON...YOY4VF`
+(the lab stand-in for EURC). Footprint and the saved observations:
+[`runs/metric-footprint-runs-4-5.json`](runs/metric-footprint-runs-4-5.json),
+[`runs/metric-observations-runs-4-5.json`](runs/metric-observations-runs-4-5.json).
+
+```
+network: testnet
+window: 2026-10-28T09:37:45.000Z .. 2026-12-12T09:37:45.000Z (45 days)
+FAIL  EURC released: 200.0000000 (floor >= 4000, target 7000)
+FAIL  escrows released or resolved to the seller: 2 (floor >= 20, target 35)
+FAIL  distinct buyer wallets: 1 (floor >= 12, target 20)
+FAIL  distinct sellers paid: 1 (floor >= 4, target 6)
+info  silent-buyer resolutions: 1 counted of 1
+info  excluded (test, team, related-party): 0; refunds ignored: 3
+info  target (EUR 7,000 / 35 escrows / 20 buyers / 6 sellers): not met
+info  stretch: volume not met, escrows not met
+info  sponsored accounts: 0
+info  dropped by footprint checks: 0
+VERDICT: FAIL
+```
+
+FAIL is expected for five test escrows. The counting is the point: the release (A) and the
+silent-buyer resolution (D) count at their gross 100 units each; the three refunds (B, C, E) are
+ignored; every escrow passes the footprint checks (token, platform, guard as both signers). The SAC
+transfer events decoded with the four-topic shape the collector expects. These are test escrows
+and would be listed as excluded in the registered mainnet footprint.
 
 ## Unit tests against Trustless Work's deployed Wasm
 

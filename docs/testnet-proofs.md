@@ -132,7 +132,31 @@ Refused paths, checked by simulation in the same run (no transaction is submitte
 release before buyer approval (Trustless Work refuses), release with a wrong Trustless Work fee
 address (guard `BadFeeAddr` = 15), release signed with the resolver key (auth trap), resolve to the
 seller without a delivery claim (guard `NoClaim` = 8), break-glass to the seller (guard
-`NotWholeToBuyer` = 13). Full run log: `scripts/out/` (public hashes only, git-ignored).
+`NotWholeToBuyer` = 13). Full run log: [`docs/runs/e2e-2026-10-28T09-39-21-050Z.json`](runs/e2e-2026-10-28T09-39-21-050Z.json) (public hashes only).
+
+### Network cost of one order (escrow A, run 4)
+
+`fee_charged` of each escrow-A transaction, read from Horizon testnet on 29 Oct 2026. Resource fees
+include the rent for the new escrow and registry entries.
+
+| Step | Tx | fee_charged (stroops) |
+|---|---|---|
+| Escrow deploy+init | `bb041063f9b5...` | 133,347 |
+| Buyer `fund_escrow` | `e73b8ccd75bb...` | 107,507 |
+| `register_escrow` with the guard | `471c0d3e3407...` | 50,416 |
+| Buyer approves the milestone | `70dde99fb2d2...` | 6,654 |
+| Guard records the approval | `088fd1f48417...` | 6,018 |
+| Delivery-claim batch anchored | `2dcab3a8be43...` | 22,267 |
+| Release through the guard | `a018c1eb444a...` | 20,288 |
+| **Total** | | **346,497 (about 0.035 XLM)** |
+
+The "about 2.4 XLM per order" figure (in the SCF #46 architecture document) is the higher figure from lab run 1
+(24 Oct 2026, [verification.md](verification.md), Testnet run 1): deploy+init 13,313,438 + fund
+10,830,314 + release 22,545 = 24,166,297 stroops (about 2.42 XLM), and is kept as the upper bound
+we observed. Not included: trustline and account reserves (base reserves are locked, not spent;
+run 4 created its trustlines unsponsored, so no sponsorship reserve appears here), TTL extensions
+for escrows open beyond 7 days, and the anchoring job's periodic registry extensions. These are
+testnet fees; mainnet fees and rent are not measured yet.
 
 ## Run 5: silent buyer and buyer contest, from this repository's scripts, 28 Oct 2026, 22:08 to 22:11 UTC
 
@@ -179,7 +203,7 @@ before the delay (guard `TooEarly` = 10); D seller payout with a tampered claim 
 `NoClaim` = 8, the proof no longer reaches an anchored root); E seller payout after the window,
 because the buyer contested (guard `Contested` = 25). The claim was re-checked publicly after the
 payout: `registry.verify` true, anchored at ledger time 1793225320, after the guard saw the escrow
-fully funded at 1793225305. Run log: `scripts/out/` (public hashes only, git-ignored).
+fully funded at 1793225305. Run log: [`docs/runs/e2e-claims-2026-10-28T22-11-56-666Z.json`](runs/e2e-claims-2026-10-28T22-11-56-666Z.json) (public hashes only).
 
 ## Run 6: refusals landed as failed transactions, 29 Oct 2026, 07:02 to 07:05 UTC
 
@@ -264,7 +288,7 @@ Every step of the run:
 Not landed in this run: the other refused paths (the release before buyer approval, which Trustless
 Work itself refuses; the release signed with the resolver key; `TooEarly` and the tampered claim from
 run 5) are still unit tests plus enforce-mode simulations. The same `landRefusal` step can land them.
-Run log: `scripts/out/refusals-*.json` (public hashes only, git-ignored).
+Run log: [`docs/runs/refusals-2026-10-29T07-05-36-669Z.json`](runs/refusals-2026-10-29T07-05-36-669Z.json) (public hashes only).
 
 ## Sponsored accounts and fee-bumps (wallet lab, 24 Oct 2026)
 

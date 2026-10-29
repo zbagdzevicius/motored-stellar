@@ -64,9 +64,10 @@ marketplace plugs in, there is a small typed port (`OrderSource`, `DeliveryOracl
   The initial published history (pushed 29 Oct 2026) ends at the tag `pre-award-baseline`; diff
   any billed deliverable against that tag. The tag `pre-award-filing` marks the state of this
   repository on the SCF #46 filing day.
-- **Tests:** 76 Rust contract tests (guard 68, claim registry 8) and 393 TypeScript tests, run by
-  [GitHub Actions](https://github.com/zbagdzevicius/motored-stellar/actions) on every push; the first
-  run (29 Oct 2026, all jobs green) and later runs are logged in [docs/verification.md](docs/verification.md).
+- **Tests:** 76 Rust contract tests (guard 68, claim registry 8) and 393 TypeScript tests, as counted
+  by the green [GitHub Actions run at tag `pre-award-filing`](https://github.com/zbagdzevicius/motored-stellar/actions/runs/40839759344)
+  (29 Oct 2026; the latest row of [docs/verification.md](docs/verification.md)). The workflow runs on
+  every push; earlier local counts (382, 388) are logged in the same file.
 - **Not yet done (planned, see the status table below):** runs with Circle's testnet EURC; live Privy, Stellar Wallets Kit and Bridge
   sandbox runs; the remaining refused paths as landed failed transactions (four are landed in run 6;
   the others are unit tests plus enforce-mode simulations); guard and registry Wasm verified on stellar.expert from a tagged

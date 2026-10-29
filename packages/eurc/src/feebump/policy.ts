@@ -73,9 +73,13 @@ export interface FeeCaps {
  * Default caps. The lab's fee-bumped SAC transfer declared 4,429,197 stroops
  * and was charged 3,848,293 (testnet, `9e0d5cb5...`).
  *
- * TODO(verify): calibrate `sorobanTotalFee` against a simulated TW
- * `fund_escrow` and guard `contest` on current testnet settings before use;
- * Trustless Work's escrow calls cost more than a bare SAC transfer.
+ * Calibrated 29 Oct 2026 from the testnet runs on @stellar/stellar-sdk 17.4
+ * (Horizon `max_fee` / `fee_charged`, docs/testnet-proofs.md): Trustless Work
+ * `fund_escrow` in run 4 declared 1,126,545 and was charged 107,507 stroops;
+ * guard `contest` in runs 5 and 6 declared 1,009,996 and was charged 5,108.
+ * The 1 XLM `sorobanTotalFee` cap is about 9x the highest declared fee. Lab
+ * run 1's first funding (24 Oct 2026) was charged 10,830,314 stroops, above
+ * this cap; mainnet fees are not measured yet, so re-check before mainnet.
  */
 export const DEFAULT_FEE_CAPS: FeeCaps = Object.freeze({
   classicFeePerOp: 10_000n, // 0.001 XLM

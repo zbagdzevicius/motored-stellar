@@ -219,8 +219,8 @@ export class Chain {
 
   /**
    * Read-only call by simulation. `source` only needs to be a valid G-address.
-   * TODO(verify): RPC simulation with a source account that does not exist on
-   * the ledger; the lab always used a funded account.
+   * Verified 29 Oct 2026 on @stellar/stellar-sdk 17.4 against testnet RPC: a read of the run 4
+   * guard's `registration` with a random, never-funded source simulates fine.
    */
   async read(contractId: string, fn: string, args: xdr.ScVal[], source: string): Promise<{ val: xdr.ScVal } | { error: string }> {
     const op = new Contract(contractId).call(fn, ...args);
@@ -287,7 +287,7 @@ export class Chain {
     if (!rpc.Api.isSimulationSuccess(rec) || !rec.result || rec.result.auth.length === 0) return this.refuse(label, 'no auth entry to sign');
     const signed = await this.signGuardEntry(rec.result.auth[0] as xdr.SorobanAuthorizationEntry, key, branch);
     const tx1 = await this.contractTx(submitter.publicKey(), escrow, fn, args, [signed]);
-    // TODO(verify): the authMode argument of simulateTransaction in the pinned SDK (the lab used it on 14.x).
+    // authMode 'enforce' verified in runs 4-6 (28-29 Oct 2026) on @stellar/stellar-sdk 17.4: refusals fail here with the guard's error code.
     const enf = await this.server.simulateTransaction(tx1, undefined, 'enforce');
     const cost = simCost(enf);
     if (cost.error) return this.refuse(label, cost.error);
@@ -395,8 +395,8 @@ export class Chain {
     // Inner fee stays a small u32; the declared resource fee lives in the Soroban data,
     // and the fee-bump below pays it. The lab patched the envelope by hand; the
     // builder's setSorobanData does the same without touching the fee.
-    // TODO(verify): checked in stellar-base 13.1.0 (build() fee = base fee x ops, ext = sorobanData);
-    // re-check that the pinned SDK's builder still does not fold the resource fee into the inner fee.
+    // Verified in run 4 (28 Oct 2026) on @stellar/stellar-sdk 17.4: both fee-bump uploads landed with
+    // this inner fee (docs/testnet-proofs.md, Run 4); the builder does not fold the resource fee into it.
     const acct2 = await this.server.getAccount(payer.publicKey());
     const inner = new TransactionBuilder(acct2, { fee: '100', networkPassphrase: this.cfg.passphrase })
       .addOperation(Operation.uploadContractWasm({ wasm }))
