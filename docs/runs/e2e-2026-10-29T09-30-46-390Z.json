@@ -1,0 +1,230 @@
+{
+  "network": "testnet",
+  "guard": "CBNODLOP53AMF2MTXUM4V36SWTFLZE4APWWXNMTZAI7XGRIJOQUAJKX6",
+  "registry": "CCHAVZFFGI44XTEHY23GHTYTWDBIXSPSK5FEVCYICDKCYFUSWAO3OK26",
+  "sac": "CDDP3WONCQS5EWCTIITACO3FKIEY6BS5UB6ILE4MT3UGFO25CDYOY4VF",
+  "runLog": [
+    {
+      "label": "A: atomic deploy+init via Trustless Work deployer",
+      "hash": "8a5550bf076e19caa708cf6cf3cf588773aa53e5a899b4730b9b94c76d3078f5",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/8a5550bf076e19caa708cf6cf3cf588773aa53e5a899b4730b9b94c76d3078f5"
+    },
+    {
+      "label": "A escrow = CAIKWHW744BMNMF5FSC6XP7LZTVB37KQFXWLJ5O5ILJKQM3GQ57PDMRQ",
+      "note": null
+    },
+    {
+      "label": "guard.check_escrow(A) before funding:",
+      "note": "Ok"
+    },
+    {
+      "label": "A: buyer fund_escrow 1000000000",
+      "hash": "b8f33a745d38ef139c28e8755fa325bfd0eb8d0b8a0fe558b030f2a8005d490c",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/b8f33a745d38ef139c28e8755fa325bfd0eb8d0b8a0fe558b030f2a8005d490c"
+    },
+    {
+      "label": "A: register_escrow",
+      "hash": "37de9b8599946b1b2bc452057c81433e3dc81072998047ae7992b1e9600ecbe8",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/37de9b8599946b1b2bc452057c81433e3dc81072998047ae7992b1e9600ecbe8"
+    },
+    {
+      "label": "A release before buyer approval (Trustless Work refuses) (record-sim)",
+      "refused": "Error(Contract, #5) BadContext (if raised by the guard)"
+    },
+    {
+      "label": "A: buyer approve_milestone",
+      "hash": "4a34ff611de3f852caf9bfec7c0f26aef3b546dec6e80140deb816d76fd1a934",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/4a34ff611de3f852caf9bfec7c0f26aef3b546dec6e80140deb816d76fd1a934"
+    },
+    {
+      "label": "A (records approval): register_escrow",
+      "hash": "e53a2e2ca25e51805c3091db623b82c0e54fd7c1a66aa2c1ab9ce4eb6136c0ed",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/e53a2e2ca25e51805c3091db623b82c0e54fd7c1a66aa2c1ab9ce4eb6136c0ed"
+    },
+    {
+      "label": "A: anchor claim batch 1793266160902 (proof depth 3)",
+      "hash": "402ffbf31242ed8d55c29a942d7c78daaebdf60ff9410d0e0eacddeca4180871",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/402ffbf31242ed8d55c29a942d7c78daaebdf60ff9410d0e0eacddeca4180871"
+    },
+    {
+      "label": "A batch root",
+      "note": "a161f1c01d87a893d898dcbacec31436c9e9d5e1aa58bb68fc8e2cc4db46283c"
+    },
+    {
+      "label": "A release with a wrong trustless_work_address (guard BadFeeAddr=15)",
+      "refused": "Error(Contract, #15) BadFeeAddr (if raised by the guard)"
+    },
+    {
+      "label": "A release signed with the resolver key (traps)",
+      "refused": "HostError: Error(Auth, InvalidAction)\n\nEvent log (newest first):\n   0: [Diagnostic Event] contract:CAIKWHW744BMNMF5FSC6XP7LZTVB37KQFXWLJ5O5ILJKQM3GQ57PDMRQ, topics:[error, Error(Auth, InvalidAction)],"
+    },
+    {
+      "label": "A release_funds through the guard: enforce-sim cost",
+      "note": {
+        "instructions": 3112725,
+        "minResourceFee": "25509"
+      }
+    },
+    {
+      "label": "A release_funds through the guard",
+      "hash": "a851cf7e3908a3c876df72104baaec4d8499b23196d70f05b109d38c12a510a7",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/a851cf7e3908a3c876df72104baaec4d8499b23196d70f05b109d38c12a510a7"
+    },
+    {
+      "label": "A seller received",
+      "note": "950000000"
+    },
+    {
+      "label": "A public re-check of the claim",
+      "note": {
+        "ok": true,
+        "leaf": "5bc4c194179f819376ff3aec13edfdc5bcccfe711145cd55bfa90b957ee14df6",
+        "computedRoot": "a161f1c01d87a893d898dcbacec31436c9e9d5e1aa58bb68fc8e2cc4db46283c",
+        "registryVerify": true,
+        "reasons": [],
+        "anchoredAt": "1793266165",
+        "fundedAt": "1793266150",
+        "anchoredAfterFunding": true
+      }
+    },
+    {
+      "label": "B: atomic deploy+init via Trustless Work deployer",
+      "hash": "413ed812558772e51d6809e880df807de1f33d53ddbdd8f371ec79df81f5578d",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/413ed812558772e51d6809e880df807de1f33d53ddbdd8f371ec79df81f5578d"
+    },
+    {
+      "label": "B escrow = CDRRZE645RPIOYHXJCXDBU5SQZUZQXRAHRKJ3HRKS3GWGWHSPIOAFLWY",
+      "note": null
+    },
+    {
+      "label": "guard.check_escrow(B) before funding:",
+      "note": "Ok"
+    },
+    {
+      "label": "B: buyer fund_escrow 1000000000",
+      "hash": "12c15e769ae8f45a464d354c7dee661f4364e27e4fce3510e338ee66a70c8b29",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/12c15e769ae8f45a464d354c7dee661f4364e27e4fce3510e338ee66a70c8b29"
+    },
+    {
+      "label": "B: register_escrow",
+      "hash": "2f828972de2d6db10cdf0ebc0613e3d4aaa670de6af8865f7b94e3dc44ea844e",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/2f828972de2d6db10cdf0ebc0613e3d4aaa670de6af8865f7b94e3dc44ea844e"
+    },
+    {
+      "label": "B: buyer dispute_escrow",
+      "hash": "9c37e171fe9d99176a86d6ec548dfacd7ce238d42e7f3cc1d57b023b3036d88b",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/9c37e171fe9d99176a86d6ec548dfacd7ce238d42e7f3cc1d57b023b3036d88b"
+    },
+    {
+      "label": "B (records dispute): register_escrow",
+      "hash": "75c545b832eda9cdcdb18b8da15730e9d545fb592ad211a0aedbcd1aa30a70a6",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/75c545b832eda9cdcdb18b8da15730e9d545fb592ad211a0aedbcd1aa30a70a6"
+    },
+    {
+      "label": "B resolve to the seller without a claim (guard NoClaim=8)",
+      "refused": "Error(Contract, #8) NoClaim (if raised by the guard)"
+    },
+    {
+      "label": "B resolve_dispute: whole balance to the buyer: enforce-sim cost",
+      "note": {
+        "instructions": 3287794,
+        "minResourceFee": "28610"
+      }
+    },
+    {
+      "label": "B resolve_dispute: whole balance to the buyer",
+      "hash": "0ee52513f9b6abce13acbd9ade89b5c7c81a48b2502284d936407a85ef6d279c",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/0ee52513f9b6abce13acbd9ade89b5c7c81a48b2502284d936407a85ef6d279c"
+    },
+    {
+      "label": "B buyer received 950000000 of 1000000000; top-up 50000000",
+      "note": null
+    },
+    {
+      "label": "B: platform refund top-up 50000000",
+      "hash": "afdfc8f7c9d981bb6e07aa9edf45f2b248d7094acfed144a42ce593550b97afd",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/afdfc8f7c9d981bb6e07aa9edf45f2b248d7094acfed144a42ce593550b97afd"
+    },
+    {
+      "label": "B buyer net after top-up",
+      "note": "1000000000"
+    },
+    {
+      "label": "C: atomic deploy+init via Trustless Work deployer",
+      "hash": "16b4fbafd47d51d2f332a632a98e09888a4d3c29a85788b16e04b9d8021ec206",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/16b4fbafd47d51d2f332a632a98e09888a4d3c29a85788b16e04b9d8021ec206"
+    },
+    {
+      "label": "C escrow = CCOA5O42POSX5KF2CKP3AZJ3SLSLEHAGC7GF7RENZC5PFRI65JHCTVXU",
+      "note": null
+    },
+    {
+      "label": "guard.check_escrow(C) before funding:",
+      "note": "Ok"
+    },
+    {
+      "label": "C (40%): buyer fund_escrow 400000000",
+      "hash": "870803ed2a7f3ff3ae4c5c23a6c5ca0a451acf1d21dbaa47577c87398ee47aa4",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/870803ed2a7f3ff3ae4c5c23a6c5ca0a451acf1d21dbaa47577c87398ee47aa4"
+    },
+    {
+      "label": "C at 40% funding: register_escrow",
+      "hash": "b8674683d7cf3cd199fb364d16ec0bef373e0cffb71061035e3c2bafef835a9f",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/b8674683d7cf3cd199fb364d16ec0bef373e0cffb71061035e3c2bafef835a9f"
+    },
+    {
+      "label": "C: platform dispute_escrow",
+      "hash": "dd0e3cb0bb8c20442672fe276b7341a16e2bd1bd33d0355538892d3e62d6722a",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/dd0e3cb0bb8c20442672fe276b7341a16e2bd1bd33d0355538892d3e62d6722a"
+    },
+    {
+      "label": "C break-glass to the seller (guard NotWholeToBuyer=13)",
+      "refused": "Error(Contract, #13) NotWholeToBuyer (if raised by the guard)"
+    },
+    {
+      "label": "C break-glass: whole balance to the buyer: enforce-sim cost",
+      "note": {
+        "instructions": 3267156,
+        "minResourceFee": "28606"
+      }
+    },
+    {
+      "label": "C break-glass: whole balance to the buyer",
+      "hash": "d2b81127ea43d81044d96664c116344a7a2e8ee6cb5db3db0af0d7b35dc015ab",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/d2b81127ea43d81044d96664c116344a7a2e8ee6cb5db3db0af0d7b35dc015ab"
+    },
+    {
+      "label": "C buyer received 380000000 of 400000000; top-up 20000000",
+      "note": null
+    },
+    {
+      "label": "C: platform refund top-up 20000000",
+      "hash": "c0b1efc302ce1ecdd6efc84a2b54150ea7bd0e23ef428871ad230466bda53207",
+      "status": "SUCCESS",
+      "link": "https://stellar.expert/explorer/testnet/tx/c0b1efc302ce1ecdd6efc84a2b54150ea7bd0e23ef428871ad230466bda53207"
+    },
+    {
+      "label": "C buyer net after top-up",
+      "note": "400000000"
+    }
+  ]
+}

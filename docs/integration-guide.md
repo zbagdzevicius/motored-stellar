@@ -76,7 +76,7 @@ share.
 - Buyers without a wallet: create a Privy embedded Stellar wallet owned by the user alone (no app
   authorisation key, no extra signers, no server-side export). Privy supports Stellar at its
   "Tier 2" level: the user signs the transaction hash in the browser with Privy's raw-hash signing.
-  See https://docs.privy.io/wallets/overview/chains. TODO(verify): re-check Privy's current Stellar
+  See https://docs.privy.io/wallets/overview/chains. TODO(verify, D2): re-check Privy's current Stellar
   tier and signing method before you ship.
 - Buyers with a wallet: connect through Stellar Wallets Kit. Make the wallet the transaction source
   of every buyer call, so only `signTransaction` is needed (not every wallet signs Soroban auth
@@ -130,12 +130,12 @@ Two creation paths:
 
 - **REST API.** Trustless Work's v1 API returns unsigned XDR for deploy, fund, approve, dispute and
   release; the party that holds the role signs and you submit. Docs:
-  https://docs.trustlesswork.com/trustless-work/api-rest/deploy.md. TODO(verify): confirm with
+  https://docs.trustlesswork.com/trustless-work/api-rest/deploy.md. TODO(verify, D1): confirm with
   Trustless Work that the v1 API accepts a contract address as `release_signer` and
   `dispute_resolver`, the same address in both, and a non-empty milestone status.
 - **On-chain deployer (fallback, proven on testnet).** Deploy Trustless Work's published Wasm
   through its deployer entry point `tw_new_single_release_escrow`, deploying and initialising in
-  one transaction. TODO(verify): confirm Trustless Work is fine with integrators using this path.
+  one transaction. TODO(verify, D1): confirm Trustless Work is fine with integrators using this path.
 
 Then, before you show the buyer anything:
 
@@ -196,7 +196,7 @@ needed), then the buyer-signed `contest`, then `dispute_escrow`, as separate tra
   signs a challenge) to each virtual account and liquidation address.
 
 Bridge docs: https://apidocs.bridge.xyz (virtual accounts, liquidation addresses, KYC links,
-sandbox). TODO(verify): confirm Bridge supports EUR/SEPA with EURC on Stellar for your entity before
+sandbox). TODO(verify, D5): confirm Bridge supports EUR/SEPA with EURC on Stellar for your entity before
 you build on it; availability is per customer.
 
 Code: [`packages/ramps`](../packages/ramps).

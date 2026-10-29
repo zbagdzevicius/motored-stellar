@@ -1,6 +1,6 @@
 # Architecture
 
-Version 0.8 of the design (guard v0.8). Testnet only. This document describes an EURC payment
+Version 0.9 of the design (guard v0.9: v0.8 rules plus in-contract TTL upkeep). Testnet only. This document describes an EURC payment
 rail for a marketplace that already takes cards: the buyer pays in Circle EURC on Stellar, the
 money sits in a non-custodial Trustless Work escrow until the buyer confirms receipt or, if the
 buyer stays silent, until 7 days after a recorded carrier delivery.
@@ -248,6 +248,21 @@ why buyer and seller are read at registration. The 7-day wait uses the registry'
 time, which the platform cannot backdate. The guard has no upgrade path: a new version is a new
 contract used only for new escrows.
 
+**TTL upkeep (v0.9).** The guard keeps its own state alive. `register_escrow`, `contest` and
+`__check_auth` extend the touched registration (`Reg`, persistent) and the guard's instance and
+code; `propose_keys`, `apply_keys`, `rotate_resolver` and the constructor extend the instance and
+code. Each extension is `extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO)`: an entry with 30 days
+(518,400 ledgers at 17,280 a day) or less left is extended to 60 days (1,036,800 ledgers); above
+that it is a no-op. The longest stretch the rules need without a touch is `delay` +
+`contest_window` (7 + 7 days), and `register_escrow` is permissionless, so anyone can top a
+registration up. The read-only views (`check_escrow`, `registration`) do not extend: they run by
+simulation, where an extension never reaches the ledger. A refused authorization fails the
+transaction, extension included. The upkeep changes no rule and writes no stored value; the
+claim registry's roots, the escrows and the Trustless Work Wasm code are still extended by the
+anchoring job. Tests `x08`-`x10` (both Trustless Work lineages) and `m03` (built Wasm) check it,
+and run 7 on testnet read the result back from the ledger
+([testnet-proofs.md](testnet-proofs.md#run-7-guard-v09-with-ttl-upkeep-29-oct-2026-0927-to-0935-utc)).
+
 **Third-party dust.** Registration needs only a balance above zero, so dust can register an
 escrow before the buyer pays. It gains nothing: every seller payout needs `funded_at` (balance at
 least the amount) and a claim anchored after it. The precheck refuses any escrow with a balance.
@@ -314,7 +329,7 @@ All amounts are in 7-decimal units (1 EURC = 10,000,000 units).
 | v1 API rejects a contract address in a role | Guard cannot be set through the API | Deploy Trustless Work's same Wasm through its on-chain deployer (proven on testnet) |
 | Depth-32 verify inside `__check_auth` exceeds budget | Seller resolution blocked | Measured about 4.5M instructions locally, 4.94M simulated on testnet, against a 400M limit |
 | Claim not yet anchored | Seller resolution refused (by design) | Anchor on a schedule; alert on queued resolutions |
-| Registry, guard, registration or escrow archived | Calls need a restore | Anchoring job extends TTL; restore is automatic since Protocol 23 |
+| Registry, guard, registration or escrow archived | Calls need a restore | The guard extends its instance and every registration it touches (v0.9: to 60 days once 30 or fewer remain); the anchoring job extends registry roots, escrows and Wasm code; restore is automatic since Protocol 23. Archival is a liveness issue only: a `Reg` is persistent storage, archived and restorable, never deleted and re-created |
 | Release key leaked | Can co-sign releases | Still needs the buyer's approval; pays only the fixed seller; rotate through the timelock |
 | Resolver key leaked | Can resolve disputes | Buyer or seller only, seller capped at the amount, seller needs a claim plus 7 days or uncontested approval; cannot open a dispute; rotate at once |
 | Issuer key leaked; forged claims anchored | Seller payouts on disputed escrows after 7 days | Alert on every anchor; offline revoker revokes the batch within 7 days |

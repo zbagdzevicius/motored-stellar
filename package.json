@@ -1,6 +1,6 @@
 {
   "name": "motored-stellar",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "private": true,
   "description": "EURC escrow on Stellar for a used car parts marketplace: Trustless Work escrow guard, delivery-claim registry and TypeScript adapters. Testnet only.",
   "license": "Apache-2.0",

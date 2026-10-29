@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// In-memory mirror of the guard contract's decisions (contracts/guard, v0.8), for
+// In-memory mirror of the guard contract's decisions (contracts/guard, v0.9; its TTL upkeep changes no decision), for
 // the example only.
 //
 // The in-memory Trustless Work model in @motored-stellar/escrow treats the

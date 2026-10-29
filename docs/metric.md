@@ -80,6 +80,36 @@ Registered up front and published in this repository:
 RPC keeps events for a limited window only, so a full recompute reads from an indexer or from the
 event store the platform publishes; the script takes an `EventSource` port for that reason.
 
+## Real output on testnet (runs 4 to 7, 29 Oct 2026)
+
+The script has been run against the real testnet escrows of runs 4 to 7 (one footprint per guard
+deployment; files and the full table in [verification.md](verification.md#re-run-over-runs-4-to-7-29-oct-2026-after-run-7)).
+Run 7 footprint, output as captured in [`runs/metric-output-run-7.txt`](runs/metric-output-run-7.txt):
+
+```
+network: testnet
+window: 2026-10-29T09:27:30.000Z .. 2026-12-13T09:27:30.000Z (45 days)
+FAIL  EURC released: 200.0000000 (floor >= 4000, target 7000)
+FAIL  escrows released or resolved to the seller: 2 (floor >= 20, target 35)
+FAIL  distinct buyer wallets: 1 (floor >= 12, target 20)
+FAIL  distinct sellers paid: 1 (floor >= 4, target 6)
+info  silent-buyer resolutions: 1 counted of 1
+info  excluded (test, team, related-party): 0; refunds ignored: 3
+info  target (EUR 7,000 / 35 escrows / 20 buyers / 6 sellers): not met
+info  stretch: volume not met, escrows not met
+info  sponsored accounts: 0
+info  dropped by footprint checks: 0
+VERDICT: FAIL
+```
+
+The verdict is FAIL, as expected: these are a handful of test escrows funded by one test buyer in
+a stand-in asset (XEUR), far below the floor. What the run shows is the counting on real chain
+data: the release and the silent-buyer resolution count at their gross amount, the three refunds
+are ignored, and the funded but unsettled escrow is not counted. The runs 4 to 6 footprint gives
+300.0000000 over 3 escrows, also FAIL. The SAC `transfer` events of runs 4 to 7 matched the
+four-topic filter, which settles the topic count on testnet; the D12 check above still applies to
+the history the indexer reads on mainnet.
+
 ## Reconciliation report (published daily from Tranche 3)
 
 A pass/fail line with a count of unexplained differences between on-chain balances and transfers

@@ -17,7 +17,7 @@ on Stellar. It is **testnet only** and **unaudited**; keep it that way in every 
   Public keys (`G...`), contract IDs (`C...`) and transaction hashes are fine.
 - **Facts need a source.** Claims about Trustless Work, Circle EURC, Bridge, Privy, Stellar Wallets
   Kit or Stellar itself must come from their code, docs or a recorded testnet run. Anything not
-  yet confirmed gets a `TODO(verify)` comment next to it.
+  yet confirmed gets a `TODO(verify, Dn)` comment next to it, naming the deliverable that closes it.
 - **Style.** English, no em dashes (use commas, colons or parentheses), Apache-2.0 headers are not
   required per file.
 
