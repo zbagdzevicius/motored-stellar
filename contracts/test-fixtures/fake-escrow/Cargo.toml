@@ -1,0 +1,17 @@
+[package]
+name = "fake-escrow"
+description = "Test fixture: a non-Trustless-Work contract that mimics get_escrow, used by the guard's negative tests. Never deploy."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+soroban-sdk = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
