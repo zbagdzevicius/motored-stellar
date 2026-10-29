@@ -3,8 +3,9 @@
  *
  * The metric definition itself lives in one place, `computeMetric` in
  * @motored-stellar/reconciler (see docs/metric.md): releases and resolutions to
- * the seller count, refunds do not, gross volume leaves the escrow, thresholds
- * EUR 7,000 / 35 escrows / 20 buyer wallets / 6 sellers, silent-buyer
+ * the seller count, refunds do not, gross volume leaves the escrow; the floor
+ * (PASS/FAIL) is EUR 4,000 / 20 escrows / 12 buyer wallets / 4 sellers, the
+ * target EUR 7,000 / 35 / 20 / 6 is reported, not a condition; silent-buyer
  * resolutions at most half of the counted escrows.
  *
  * This module adds what a public re-computation from chain data needs on top:

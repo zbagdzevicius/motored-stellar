@@ -19,7 +19,7 @@ Deploy and e2e work on **testnet only**. Each one checks the network passphrase 
 - Keys are generated when you run `keys.ts`. Accounts get random ed25519 seeds. The release, resolver and break-glass guard keys get 32 random bytes each. The lab derived its guard keys from fixed seeds, which are public, so this repo does not use them.
 - Key material is written only to `<repo>/.keys/testnet.json`, with mode 0600. The root `.gitignore` excludes `.keys/`, and the directory also holds its own `*` ignore file. `FileKeyStore` refuses any path outside that directory.
 - Nothing prints a secret. Use `publicView()` for anything that reaches a terminal.
-- `testnet-state.json` holds only public contract IDs and claims, and is git-ignored. Run logs in `scripts/out/` hold only public transaction hashes.
+- `testnet-state.json` holds only public contract IDs and claims, and is git-ignored. Run logs in `scripts/out/` hold only public transaction hashes; the run 4-6 logs are committed in `docs/runs/`.
 
 ## Quickstart (testnet)
 
@@ -50,7 +50,7 @@ npm run metric -- --footprint footprint.json --rpc <url> --start-ledger <n>     
 
 The metric definition itself is `computeMetric` from `@motored-stellar/reconciler`. This script adds the footprint checks (token, and the guard as both signers) and the window, then maps chain data to that function's input.
 
-The footprint lists the platform address, guard, registry, sponsor, token contract and escrow IDs. It also lists excluded escrows: test, team and related-party orders. The script counts a release, or a dispute resolved to the seller through the guard. Volume is the gross amount that leaves the escrow in the seller-paying transaction. The thresholds are EUR 7,000, 35 escrows, 20 buyer wallets and 6 sellers, inside a 45-day window. Silent-buyer resolutions beyond half of the counted escrows are not counted. Exit code 0 means PASS and 3 means FAIL. See `docs/metric.md`.
+The footprint lists the platform address, guard, registry, sponsor, token contract and escrow IDs. It also lists excluded escrows: test, team and related-party orders. The script counts a release, or a dispute resolved to the seller through the guard. Volume is the gross amount that leaves the escrow in the seller-paying transaction. The floor (PASS/FAIL) is EUR 4,000, 20 escrows, 12 buyer wallets and 4 sellers, inside a 45-day window; the target (EUR 7,000, 35 escrows, 20 wallets, 6 sellers) is reported, not a condition. Silent-buyer resolutions beyond half of the counted escrows are not counted. Exit code 0 means PASS and 3 means FAIL. See `docs/metric.md`.
 
 RPC keeps only a short event history, so for a full window, read events from an indexer export (`--observations`). `--save-observations` records a live read.
 

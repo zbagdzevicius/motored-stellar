@@ -71,7 +71,8 @@ export class RpcEscrowStateReader implements EscrowStateReader {
  * Stellar Asset Contract transfer events via RPC getEvents.
  * Topics: ["transfer", from, to, asset]; data: i128, or a map with `amount`
  * when a muxed id is attached (CAP-67).
- * TODO(verify): topic count and data shape on the target protocol version.
+ * Verified on testnet 29 Oct 2026 (@stellar/stellar-sdk 17.4): the run 4-5 escrows' transfers
+ * decode with this shape (docs/verification.md, metric run; docs/runs/metric-observations-runs-4-5.json).
  */
 export class RpcEventSource implements EventSource {
   constructor(private readonly server: Pick<rpc.Server, 'getEvents'>, private readonly pageLimit = 1000) {}

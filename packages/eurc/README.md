@@ -107,8 +107,9 @@ const result = await service.bumpAndSubmit(signedInnerTx);
 
 ## Open items
 
-- `TODO(verify)`: calibrate `DEFAULT_FEE_CAPS.sorobanTotalFee` against a
-  simulated Trustless Work `fund_escrow` and guard `contest` on current
-  testnet settings.
+- `DEFAULT_FEE_CAPS.sorobanTotalFee` (1 XLM) was calibrated on 29 Oct 2026
+  against testnet runs 4-6: `fund_escrow` declared 1,126,545 stroops (charged
+  107,507), guard `contest` declared 1,009,996 (charged 5,108). Re-check
+  against mainnet fees before mainnet use.
 - `TODO(verify)`: the memo type the ramp provider issues for Stellar deposits.
 - `TODO(verify)`: re-read the mainnet EURC issuer flags before any mainnet use.
