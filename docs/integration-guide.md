@@ -55,12 +55,15 @@ Offer EURC only where the escrow can settle cleanly:
 - **A delivery signal you trust.** Silent-buyer payouts need a delivery claim. Enable a destination
   only after your carrier's tracking has reported a delivery there.
 - **A platform fee within Trustless Work's cap.** Compute it with the fee rules in
-  `packages/escrow` (below); offer EURC only if `0 <= platform_fee_bps <= 9900`.
+  `packages/escrow` (below); offer EURC only if `0 <= platform_fee_bps` and the fee is at or under
+  the guard's cap (`max_platform_fee_bps`, at most Trustless Work's 9,900; Motored plans 1,000 on mainnet).
 - **Exposure caps** per order and in total open escrow value until an external audit.
 
 ## 2. Price the escrow so the seller nets what the card rail pays
 
-The escrow amount is what the buyer pays (items, shipping, buyer fee). Trustless Work takes 0.3%
+The escrow amount is items plus the buyer fee. Shipping stays outside the escrow: the buyer pays it
+to the platform address in the funding step (`orderAmountsCents`, `buildFundingTransactions` in
+`packages/escrow`), so the platform fee carries only commission and buyer fee. Trustless Work takes 0.3%
 and pays the platform its fee in basis points, both floored on the escrow amount. To make the
 seller net at least the card-rail payout (`card_net`) and at most 1 basis point more:
 

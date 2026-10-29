@@ -1,9 +1,12 @@
 // Funding precheck (guard.check_escrow + get_escrow re-read) and the on-chain
 // deployer call shape, over the in-memory RPC.
 
-import { Keypair, Networks, scValToNative, xdr } from '@stellar/stellar-sdk';
+import { Asset, Keypair, Networks, scValToNative, xdr, type Operation } from '@stellar/stellar-sdk';
 import { describe, expect, it } from 'vitest';
 import {
+  buildFundingTransactions,
+  buildShippingPaymentTransaction,
+  centsToUnits,
   deployerCall,
   escrowToScVal,
   InMemorySubmitter,
@@ -63,6 +66,52 @@ describe('precheckEscrow', () => {
     const rpc = new InMemorySubmitter().on(GUARD, 'check_escrow', () => simOk()).on(ESCROW, 'get_escrow', () => simOk(escrowToScVal(other)));
     const r = await precheckEscrow(rpc, { networkPassphrase: NET, sourcePublicKey: source, guardContractId: GUARD, escrowContractId: ESCROW, terms });
     expect(r).toEqual({ ok: false, stage: 'terms', mismatches: ['amount', 'roles.receiver'] });
+  });
+});
+
+describe('funding step: fund_escrow plus shipping to the platform address', () => {
+  const EURC = new Asset('EURC', Keypair.random().publicKey());
+  const okRpc = () => new InMemorySubmitter().on(GUARD, 'check_escrow', () => simOk()).on(ESCROW, 'get_escrow', () => simOk(escrowToScVal(escrow))).on(ESCROW, 'fund_escrow', () => simOk());
+  const prechecked = async (rpc: InMemorySubmitter) => {
+    const r = await precheckEscrow(rpc, { networkPassphrase: NET, sourcePublicKey: source, guardContractId: GUARD, escrowContractId: ESCROW, terms });
+    if (!r.ok) throw new Error(`precheck failed at ${r.stage}`);
+    return r;
+  };
+
+  it("pays shipping to the escrow's pinned platform address, as the next transaction after fund_escrow", async () => {
+    const rpc = okRpc();
+    const orderRef = Buffer.alloc(32, 7);
+    const pre = await prechecked(rpc);
+    const r = await buildFundingTransactions(rpc, NET, buyer, pre, { asset: EURC, amount: centsToUnits(499n), memoHash: orderRef });
+    expect(r.funding.tx.operations).toHaveLength(1);
+    expect(r.funding.tx.operations[0]!.type).toBe('invokeHostFunction');
+    const ship = r.shipping!.tx;
+    expect(ship.source).toBe(buyer);
+    expect(BigInt(ship.sequence)).toBe(BigInt(r.funding.tx.sequence) + 1n);
+    expect(ship.operations).toHaveLength(1);
+    const pay = ship.operations[0] as Operation.Payment;
+    expect(pay.type).toBe('payment');
+    expect(pay.destination).toBe(platform);
+    expect(pay.asset.equals(EURC)).toBe(true);
+    expect(pay.amount).toBe('4.9900000');
+    expect(Buffer.from(ship.memo.value as Buffer).equals(orderRef)).toBe(true);
+    // The escrow is funded with its own amount only: shipping is not in it.
+    expect(scValToNative(pre.fundingCall.args[2]!)).toBe(escrow.amount);
+  });
+
+  it('builds no shipping payment for an order without shipping', async () => {
+    const rpc = okRpc();
+    const r = await buildFundingTransactions(rpc, NET, buyer, await prechecked(rpc));
+    expect(r.shipping).toBeUndefined();
+    const z = await buildFundingTransactions(rpc, NET, buyer, await prechecked(rpc), { asset: EURC, amount: 0n });
+    expect(z.shipping).toBeUndefined();
+  });
+
+  it('refuses a non-positive amount or XLM', async () => {
+    const rpc = okRpc();
+    const { funding } = await buildFundingTransactions(rpc, NET, buyer, await prechecked(rpc));
+    expect(() => buildShippingPaymentTransaction(NET, funding.tx, platform, { asset: EURC, amount: -1n })).toThrow(RangeError);
+    expect(() => buildShippingPaymentTransaction(NET, funding.tx, platform, { asset: Asset.native(), amount: 1n })).toThrow(RangeError);
   });
 });
 

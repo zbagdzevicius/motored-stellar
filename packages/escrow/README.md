@@ -9,7 +9,7 @@ Serves SCF deliverables:
 | Deliverable | What in this package |
 |---|---|
 | D1 Trustless Work escrow in EURC | `TrustlessWorkRestClient` (v1 REST), `deployer.ts` (on-chain deployer fallback, deploy + init in one transaction), `precheck.ts` (`guard.check_escrow` + `get_escrow` re-read before a funding call), `events.ts` (event reader), `lifecycle.ts` |
-| D3b escrow ledger rules | `fees.ts`: `platform_fee_bps = floor((9970 * amount - 10000 * card_net) / amount)`, cap 9,900, half-up card-rail rounding, Trustless Work fee floors, refund top-up |
+| D3b escrow ledger rules | `fees.ts`: `platform_fee_bps = floor((9970 * amount - 10000 * card_net) / amount)`, cap 9,900 or the guard's (`MAINNET_MAX_PLATFORM_FEE_BPS` 1,000), shipping outside the escrow (`orderAmountsCents`), half-up card-rail rounding, Trustless Work fee floors, refund top-up |
 | D6 release service auth path | `release-service.ts` + `guard-auth.ts`: `release_funds`, `resolve_dispute` and `withdraw_remaining_funds` with the guard's custom-account authorization entry |
 | D4 end-to-end building block | `ports.ts` + in-memory implementations used by `examples/order-flow` |
 
@@ -40,9 +40,10 @@ Nothing here imports a marketplace's private system. It plugs in through ports
 
 ## Money rules in short
 
-- Escrow amount = items + shipping + buyer fee (5% of items, capped at EUR 5, 0 under a referral). Rates are parameters (`FeeSchedule`), defaults 500 / 500 / 500.
+- Escrow amount = items + buyer fee (5% of items, capped at EUR 5, 0 under a referral). Rates are parameters (`FeeSchedule`), defaults 500 / 500 / 500.
+- Shipping is outside the escrow: `orderAmountsCents` returns it as `shippingToPlatformCents`, the quote carries it as `shippingToPlatform`, and `buildFundingTransactions` (`precheck.ts`) adds it as a classic EURC payment to the escrow's pinned platform address, sequenced right after `fund_escrow` (a Soroban transaction holds one operation). A shipping refund is Motored's, as on the card rail.
 - The seller nets at least the card-rail net (each item minus a 5% commission, rounded half up per item) and at most 1 basis point of the amount plus 2 units of flooring more. Property-tested over 50,000 seeded orders.
-- An order whose fee would exceed 9,900 bps (Trustless Work's cap) is card-only.
+- An order whose fee would exceed the guard's cap (`quoteEscrow(..., { maxPlatformFeeBps })`, default Trustless Work's 9,900; `MAINNET_MAX_PLATFORM_FEE_BPS` = 1,000) is card-only. With shipping outside the escrow, 5% commission plus a buyer fee of at most 5% quotes 922 bps at exact rates; tests show every cart whose items are each above EUR 1.10 stays at or under 1,000.
 - Trustless Work's 0.3% and the platform fee are floored on the same base; resolutions split them per recipient (mirrors `calculator.rs` and `distribution.rs` of the v1 contract).
 - Refund before release: the escrow pays the buyer the balance less both fees; the platform tops up exactly those two amounts, so the buyer receives 100%.
 - Paid means the buyer's own `fund_escrow` calls reach the amount. Partial funding, a third party's funding and plain transfers never mark an order paid; excess is flagged.

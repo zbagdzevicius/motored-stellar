@@ -10,6 +10,8 @@
  * - Volume is the gross amount leaving the escrow (seller payout plus fees):
  *   `escrow.amount` on a release; the whole outflow of the resolution
  *   transaction when the seller is the only party paid. Refunds do not count.
+ *   Shipping is paid to the platform address outside the escrow, so it is
+ *   never part of this volume.
  * - Window: an escrow counts when it is FUNDED inside the 45-day funding
  *   window and released or resolved to the seller within 14 days after that
  *   window ends (day 59 at the latest, inside the 90-day tranche window). An

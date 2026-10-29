@@ -72,7 +72,7 @@ marketplace plugs in, there is a small typed port (`OrderSource`, `DeliveryOracl
   **Guard v0.10** (29 Oct 2026) adds a seller dispute payout that no buyer leg can block
   (`withdraw_remaining_funds` may pay the seller under the same rules as a resolution, capped and
   once, so a buyer who removes their trustline and dusts the escrow cannot hold the seller's share),
-  a cap on the escrow's platform fee rate (`max_platform_fee_bps`, set per deploy (500 bps in run 9; 3,000 bps planned for mainnet, because the platform fee also carries the DPD shipping Motored buys; an order whose quote is above the cap stays on the card rail),
+  a cap on the escrow's platform fee rate (`max_platform_fee_bps`, set per deploy (500 bps in run 9; 1,000 bps planned for mainnet; shipping is paid to the platform address in the funding step, outside the escrow; an order whose quote is above the cap stays on the card rail),
   error `PlatformFeeOverCap` = 29) and the guard's and the registry's TTL values at 120 / 150 days,
   at or above mainnet's minimum persistent TTL ([contracts/README.md](contracts/README.md)).
   Run 9, 29 Oct 2026, deployed **guard v0.10** and a fresh registry on Circle's testnet EURC and
@@ -93,9 +93,10 @@ marketplace plugs in, there is a small typed port (`OrderSource`, `DeliveryOracl
   The initial published history (pushed 29 Oct 2026) ends at the tag `pre-award-baseline`; diff
   any billed deliverable against that tag. The tag `pre-award-filing` marks the state of this
   repository on the SCF #46 filing day.
-- **Tests:** 99 Rust contract tests (guard 88, claim registry 11) and 453 TypeScript tests, counted
-  locally on 29 Oct 2026 with guard v0.10 and its platform fee cap (`cargo test` and vitest across
-  the eight workspaces). Before the fee cap they were 95 and 448; the v0.9 counts were 83 and 413; CI on the v0.9 commits is green ([run 40855043032](https://github.com/zbagdzevicius/motored-stellar/actions/runs/40855043032), logged in [docs/verification.md](docs/verification.md)). The workflow runs on
+- **Tests:** 99 Rust contract tests (guard 88, claim registry 11) and 462 TypeScript tests, counted
+  locally on 29 Oct 2026 with guard v0.10, its platform fee cap and shipping paid outside the escrow
+  (`cargo test` and vitest across the eight workspaces). Before shipping moved out of the escrow
+  the TypeScript count was 453; before the fee cap they were 95 and 448; the v0.9 counts were 83 and 413; CI on the v0.9 commits is green ([run 40855043032](https://github.com/zbagdzevicius/motored-stellar/actions/runs/40855043032), logged in [docs/verification.md](docs/verification.md)). The workflow runs on
   every push; earlier counts (382 and 388 locally, 76 and 393 in the
   [CI run before v0.9](https://github.com/zbagdzevicius/motored-stellar/actions/runs/40839759344))
   are logged in the same file.
@@ -164,7 +165,7 @@ sequenceDiagram
 What the guard enforces: it pays only that escrow's buyer or its seller (plus the two fee
 recipients it pins, Trustless Work's fee account and the platform address; the platform fee rate is
 set when the escrow is created and checked against the order by Motored's backend, and since v0.10
-the guard refuses to register an escrow whose rate is above its cap, set per deploy (500 bps in run 9; 3,000 bps planned for mainnet, because the platform fee also carries the DPD shipping Motored buys; an order whose quote is above the cap stays on the card rail));
+the guard refuses to register an escrow whose rate is above its cap, set per deploy (500 bps in run 9; 1,000 bps planned for mainnet; shipping is paid to the platform address in the funding step, outside the escrow; an order whose quote is above the cap stays on the card rail));
 it never pays the seller more than the escrow amount; it pays the seller without the
 buyer's approval only against a delivery claim anchored after the escrow was fully funded and at
 least 7 days old; a buyer-signed `contest` switches off the one claimless seller path; the
@@ -237,18 +238,18 @@ imports, or testnet tx hashes mapped to order references in [docs/testnet-proofs
 |---|---|---|---|---|
 | D1 | Trustless Work escrow in EURC on testnet, guard in both roles | [`packages/escrow`](packages/escrow), [`scripts/testnet`](scripts/testnet) | REST client in [`packages/escrow/src/tw-rest.ts`](packages/escrow/src/tw-rest.ts), drafted against Trustless Work's OpenAPI schema; request and response shapes are verified against the live v1 API in D1 (each open shape is marked `TODO(verify, D1 live API run)`); deployer path, lifecycle, precheck, event reader, release service; deployer path ran on testnet (run 4), and with Circle's testnet EURC (run 8) | Live v1 REST API runs (or the on-chain deployer, if Trustless Work confirms the API does not take a contract address in both roles, or has not answered within 10 working days of our dated written request, linked in the run log); Circle testnet EURC |
 | D2 | Wallets, sponsored accounts, EURC trustlines, fee-bumps | [`packages/wallets`](packages/wallets), [`packages/eurc`](packages/eurc) | Privy and Wallets Kit adapters, CAP-33 sponsorship, fee-bump policy; tx shapes lab-proven ([proofs](docs/testnet-proofs.md#sponsored-accounts-and-fee-bumps-wallet-lab-24-oct-2026)) | Browser runs with real wallets; Circle testnet EURC; measured fee caps; key custody |
-| D3 | Order system on the escrow (orders, ledger and reconciliation, payouts, disputes and refunds, notifications) | Rules only: [`packages/escrow/src/fees.ts`](packages/escrow/src/fees.ts); `OrderSource`, `DeliveryOracle`, `LedgerSource` ports | Fee, cap, rounding and refund rules with tests | A new `packages/escrow-orders` (escrow order-state machine) and a `packages/reconciler` extension, with public CI tests; marketplace screens stay private |
+| D3 | Order system on the escrow (orders, escrow ledger, payouts, disputes and refunds; escrow emails are funded by Motored, not billed) | Rules only: [`packages/escrow/src/fees.ts`](packages/escrow/src/fees.ts); `OrderSource`, `DeliveryOracle`, `LedgerSource` ports | Fee, cap, rounding and refund rules with tests | A new `packages/escrow-orders` (escrow order-state machine), with public CI tests; marketplace screens stay private |
 | D4 | Checkout on the EURC rail, end-to-end test | [`examples/order-flow`](examples/order-flow), [`scripts/testnet/e2e.ts`](scripts/testnet/e2e.ts), [`scripts/testnet/e2e-claims.ts`](scripts/testnet/e2e-claims.ts) | In-memory flow and the scripted testnet run | Private checkout UI; end-to-end run log appended to testnet-proofs.md |
 | D5 | Bridge on-ramp and off-ramp in sandbox | [`packages/ramps`](packages/ramps) | Offline unit tests | Sandbox runs |
 | D6 | Guard and claim registry: production hardening, claims from live DPD tracking | [`contracts/guard`](contracts/guard), [`contracts/claim-registry`](contracts/claim-registry), [`packages/claims`](packages/claims), [`packages/escrow/src/release-service.ts`](packages/escrow/src/release-service.ts) | Guard v0.10 (v0.9 rules plus an unblockable seller payout, a platform fee cap and mainnet-sized TTL) and registry; lab runs 1-3, runs 4-6 (v0.8), run 7 (v0.9), run 8 (v0.9 on Circle testnet EURC), run 9 (v0.10 on Circle testnet EURC) | The remaining refused paths as landed failed txs (four landed in run 6, the fee-cap refusal in run 9); key-rotation and migration drill; `Anchored` event; registry-root TTL top-up by the anchoring job; Wasm verified on stellar.expert |
-| D7 | Threat model and monitoring | [`docs/threat-model.md`](docs/threat-model.md), [`docs/trust-model.md`](docs/trust-model.md) | Written | Sections for Bridge, sanctions, the wallet and checkout integration and order-system races; alert policies; a fired test alert |
-| D8 | Testnet hardening from pilot sessions, Polish locale | Failure-state tests land here | None | Billed |
-| D9 | Escrow operations console | Resolve and retry calls land in [`packages/escrow`](packages/escrow); console UI private | None | Billed |
+| D7 | Threat model, reconciliation and monitoring | [`docs/threat-model.md`](docs/threat-model.md), [`docs/trust-model.md`](docs/trust-model.md), [`packages/reconciler`](packages/reconciler) | Written; reconciler with unit tests | Sections for Bridge, sanctions, the wallet and checkout integration and order-system races; the 15-minute escrow-to-order reconciliation as a `packages/reconciler` extension with a one-cent-gap CI test; alert policies; a fired test alert |
+| D8 | Testnet hardening from pilot sessions, testnet regression suite | Failure-state tests and the CI regression suite land here | None | Billed |
+| D9 | Escrow operations console | Private (Motored's admin) | None | Not billed: funded by Motored |
 | D10 | Mainnet cutover | Mainnet deployment record lands in testnet-proofs.md's mainnet section | None | Billed; after the legal opinion, with per-order and open-value caps until an external review |
-| D11 | Seller EURC payouts, invoices, refunds after release | Off-ramp in [`packages/ramps`](packages/ramps); records are private | None | Billed |
+| D11 | Seller EURC payouts, refunds after release | Off-ramp in [`packages/ramps`](packages/ramps); records are private | None | Billed (invoices and DAC7 records are funded by Motored, not billed) |
 | D12 | Live rollout, reconciliation, metric, mainnet hardening | [`packages/reconciler`](packages/reconciler), [`scripts/metric`](scripts/metric), [`docs/metric.md`](docs/metric.md) | Reconciler, daily report and metric with unit tests | Indexer beyond RPC retention; mainnet runs; published daily report |
-| D13 | Open-source release, regression suite, mainnet canary | This repository, [`docs/integration-guide.md`](docs/integration-guide.md) | Draft integration guide | First tagged release; CI regression suite on testnet; read-only mainnet canary |
-| U1-U5 | User testing (pilots, localisation, video, help pages, interviews) | Not code | None | Billed in Tranches 2-3 |
+| D13 | Open-source release, mainnet canary | This repository, [`docs/integration-guide.md`](docs/integration-guide.md) | Draft integration guide | First tagged release; read-only mainnet canary |
+| U1-U5 | User testing (pilots, LT and EN copy, video, help pages, interviews) | Not code | None | Billed in Tranches 2-3 |
 
 ### Status of each part
 

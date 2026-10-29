@@ -14,13 +14,23 @@
 // The buyer's `fund_escrow(signer, expected_escrow, amount)` then carries the
 // exact state just read as `expected_escrow`, so the buyer's signature commits to
 // roles and flags and the call fails if anything changes in between.
+//
+// Shipping is not escrowed (see `fees.ts`): the buyer pays it to the escrow's
+// pinned `platform` address as a plain EURC payment in the same funding step.
+// A Soroban transaction carries exactly one operation, so the payment cannot sit
+// inside the `fund_escrow` transaction; `buildFundingTransactions` builds it as
+// the next transaction in the buyer's sequence, so it is valid only once the
+// funding transaction has used the sequence number before it. The order is paid
+// only when both have landed; a shipping payment without a funded escrow is
+// refunded by Motored, as on the card rail.
 
-import { TransactionBuilder, type Transaction, type xdr } from '@stellar/stellar-sdk';
+import { Account, Asset, Memo, Operation, TransactionBuilder, type Transaction, type xdr } from '@stellar/stellar-sdk';
 import { guardErrorName, type GuardErrorName } from './errors.js';
 import { escrowFromScVal, type OnChainEscrow } from './escrow-types.js';
 import type { Submitter } from './ports.js';
 import { addr, i128 } from './scval.js';
 import { buildInvocation, simulateRead, SimulationError, type ContractCall } from './soroban.js';
+import { formatUnits } from './units.js';
 
 export interface ExpectedTerms {
   amount: bigint;
@@ -111,6 +121,62 @@ export async function buildFundingTransaction(
   if (!sim.ok) throw new SimulationError(sim, 'fund_escrow');
   const ready = sim.prepare(tx);
   return { tx: ready, unsignedXdr: ready.toXDR() };
+}
+
+/** Shipping the buyer pays to the platform address in the funding step, outside the escrow. */
+export interface ShippingPayment {
+  /** The EURC classic asset (code and issuer); the escrow's trustline is its SAC. */
+  asset: Asset;
+  /** Shipping, 7-decimal units (`EscrowQuote.shippingToPlatform`). Must be positive. */
+  amount: bigint;
+  /** Optional 32-byte memo hash, e.g. the order reference, so the payment matches its order. */
+  memoHash?: Buffer;
+}
+
+/**
+ * Builds the buyer's shipping payment: one classic EURC payment from the buyer
+ * to `platform`, sequenced right after `previous` (the funding transaction), so
+ * it is valid only after that sequence number is used. Unsigned.
+ */
+export function buildShippingPaymentTransaction(
+  networkPassphrase: string,
+  previous: Pick<Transaction, 'source' | 'sequence'>,
+  platform: string,
+  shipping: ShippingPayment,
+  opts: { fee?: string; timeoutSeconds?: number } = {},
+): { tx: Transaction; unsignedXdr: string } {
+  if (shipping.amount <= 0n) throw new RangeError('shipping amount must be positive');
+  if (shipping.asset.isNative()) throw new RangeError('shipping is paid in EURC, not XLM');
+  const builder = new TransactionBuilder(new Account(previous.source, previous.sequence), {
+    fee: opts.fee ?? '100',
+    networkPassphrase,
+    ...(shipping.memoHash ? { memo: Memo.hash(shipping.memoHash) } : {}),
+  });
+  const tx = builder
+    .addOperation(Operation.payment({ destination: platform, asset: shipping.asset, amount: formatUnits(shipping.amount) }))
+    .setTimeout(opts.timeoutSeconds ?? 300)
+    .build();
+  return { tx, unsignedXdr: tx.toXDR() };
+}
+
+/**
+ * The buyer's whole funding step: the `fund_escrow` transaction and, when the
+ * order has shipping, the shipping payment to the escrow's pinned platform
+ * address as the next transaction in the buyer's sequence. Both unsigned, for
+ * the buyer's wallet to review and sign; a sponsor may fee-bump each one.
+ */
+export async function buildFundingTransactions(
+  rpc: Submitter,
+  networkPassphrase: string,
+  buyer: string,
+  precheck: Extract<PrecheckResult, { ok: true }>,
+  shipping?: ShippingPayment,
+): Promise<{ funding: { tx: Transaction; unsignedXdr: string }; shipping?: { tx: Transaction; unsignedXdr: string } }> {
+  const funding = await buildFundingTransaction(rpc, networkPassphrase, buyer, precheck);
+  if (!shipping || shipping.amount === 0n) return { funding };
+  // Paid only to the address the guard pinned as the escrow's platform (checked by check_escrow).
+  const platform = precheck.escrow.roles.platform;
+  return { funding, shipping: buildShippingPaymentTransaction(networkPassphrase, funding.tx, platform, shipping) };
 }
 
 /** Parses an unsigned funding XDR back, for a review screen that decodes before signing. */

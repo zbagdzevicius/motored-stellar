@@ -68,7 +68,7 @@ In every seller payout the seller's share is capped at the escrow amount (v0.8);
 dust can only go to the buyer.
 
 Platform fee cap (v0.10): `check_escrow` and `register_escrow` refuse an escrow whose Trustless Work
-`platform_fee` is above `Cfg::max_platform_fee_bps` (set per deploy (500 bps in run 9; 3,000 bps planned for mainnet, because the platform fee also carries the DPD shipping Motored buys; an order whose quote is above the cap stays on the card rail)) with
+`platform_fee` is above `Cfg::max_platform_fee_bps` (set per deploy (500 bps in run 9; 1,000 bps planned for mainnet; shipping is paid to the platform address in the funding step, outside the escrow; an order whose quote is above the cap stays on the card rail)) with
 `PlatformFeeOverCap` (29). Trustless Work freezes the fee once the escrow holds a balance and the
 guard registers only from that point, so no escrow the guard pays out of carries a higher rate; an
 over-cap escrow is never registered, so every guard branch refuses it (`NotRegistered`). Before
@@ -97,7 +97,7 @@ Public functions:
 
 `Cfg` is the integration surface: `admin`, `resolver_admin`, `release_pk`, `resolver_pk`,
 `breakglass_pk`, `registry`, `token` (EURC SAC), `platform` (platform fee account),
-`max_platform_fee_bps` (cap on the escrow's `platform_fee`, v0.10; 500 in run 9, 3,000 planned for mainnet), `tw_wasm`
+`max_platform_fee_bps` (cap on the escrow's `platform_fee`, v0.10; 500 in run 9, 1,000 planned for mainnet), `tw_wasm`
 (pinned Trustless Work Wasm hash), `tw_fee` (`Some(address)` for the testnet lineage whose release,
 resolve and withdraw take `trustless_work_address` as argument 1; `None` for the mainnet lineage with
 a hardcoded fee account), `delay`, `rotate_delay`, `contest_window` (seconds).
@@ -148,7 +148,7 @@ platform-neutral comments, new claim-registry unit tests.
 
 ## TODO(verify)
 
-Each item closes in D13 (open-source release and regression suite).
+Each item closes in D13 (open-source release).
 
 * Trustless Work's license for its deployed Wasm, before ever committing the fetched files.
 * `stellar contract fetch --wasm-hash` was checked against Stellar CLI 23.4.0; re-check with the CI

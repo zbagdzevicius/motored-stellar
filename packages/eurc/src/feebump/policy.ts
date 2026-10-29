@@ -21,7 +21,11 @@
  *     - a sponsored EURC trustline sandwich (Begin by the sponsor for the
  *       source, ChangeTrust(EURC) with the default limit, End by the source);
  *     - a classic EURC payment from the source to the source's stored ramp
- *       destination (address and memo must match).
+ *       destination (address and memo must match);
+ *     - a classic EURC payment from the source to the configured platform
+ *       address: the order's shipping, paid outside the escrow in the funding
+ *       step (a Soroban transaction holds one operation, so it cannot ride
+ *       inside the `fund_escrow` transaction).
  *     Soroban calls may carry only source-account authorisation entries;
  *     address entries are refused whether they arrive as the legacy variant
  *     or as `sorobanCredentialsAddressV2` (CAP-71).
@@ -97,6 +101,12 @@ export interface FeeBumpPolicyConfig {
   readonly guardContractId: string;
   /** G... key of the sponsor (fee source and trustline sponsor). */
   readonly sponsorPublicKey: string;
+  /**
+   * G... platform (fee) address the guard pins as every escrow's `platform`.
+   * When set, a buyer's EURC payment to it (shipping, outside the escrow) is
+   * sponsored. Unset, such a payment is refused like any other destination.
+   */
+  readonly platformAddress?: string;
   readonly registry: WalletRegistry;
   readonly caps?: FeeCaps;
   /** Longest validity window the sponsor will pay for. Default 600 s. */
@@ -111,7 +121,8 @@ export type AllowedAction =
   | { readonly kind: "dispute_escrow"; readonly escrow: string }
   | { readonly kind: "contest"; readonly escrow: string }
   | { readonly kind: "sponsored_trustline" }
-  | { readonly kind: "offramp_payment"; readonly destination: string; readonly amount: string };
+  | { readonly kind: "offramp_payment"; readonly destination: string; readonly amount: string }
+  | { readonly kind: "shipping_payment"; readonly destination: string; readonly amount: string };
 
 export type RejectReason =
   | "wrong-network"
@@ -146,6 +157,9 @@ export class FeeBumpPolicy {
   constructor(readonly config: FeeBumpPolicyConfig) {
     if (!StrKey.isValidContract(config.guardContractId)) throw new Error("guardContractId must be a C... address");
     if (!StrKey.isValidEd25519PublicKey(config.sponsorPublicKey)) throw new Error("sponsorPublicKey must be a G... key");
+    if (config.platformAddress !== undefined && !StrKey.isValidEd25519PublicKey(config.platformAddress)) {
+      throw new Error("platformAddress must be a G... key");
+    }
     this.caps = config.caps ?? DEFAULT_FEE_CAPS;
     this.maxValidity = config.maxValiditySeconds ?? 600;
     this.clock = config.clock ?? systemClock;
@@ -245,6 +259,9 @@ export class FeeBumpPolicy {
   private async offramp(op: Operation.Payment, inner: Transaction, source: string): Promise<PolicyDecision> {
     if (op.source !== undefined && op.source !== source) return reject("foreign-op-source");
     if (!op.asset.equals(this.config.eurc)) return reject("wrong-asset");
+    if (this.config.platformAddress !== undefined && op.destination === this.config.platformAddress) {
+      return { allowed: true, action: { kind: "shipping_payment", destination: op.destination, amount: op.amount }, soroban: false };
+    }
     const ramp = await this.config.registry.rampDestinationOf(source);
     if (!ramp || op.destination !== ramp.address) return reject("destination-not-allowed");
     const memo = inner.memo;

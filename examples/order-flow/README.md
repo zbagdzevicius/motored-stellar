@@ -31,12 +31,18 @@ stellar.expert links.
 
 **Scenario 1: buyer approves.**
 
-1. `OrderSource` supplies a single-seller order (item EUR 180, shipping EUR 12, buyer fee EUR 5).
-2. The fee rules compute `platform_fee_bps` so the seller nets at least the card-rail payout.
+1. `OrderSource` supplies a single-seller order (item EUR 180, shipping EUR 12, buyer fee EUR 5). The
+   escrow holds items plus the buyer fee (EUR 185); shipping, a DPD label Motored buys, goes to the
+   platform address in the funding step, outside the escrow.
+2. The fee rules compute `platform_fee_bps` so the seller nets at least the card-rail payout (726 bps
+   here, under the 1,000 bps cap planned for mainnet).
 3. A Trustless Work escrow is created with the guard as `release_signer` and `dispute_resolver`;
    `guard.check_escrow` passes before the buyer sees anything.
-4. The buyer's wallet (`WalletProvider`) reviews the decoded transaction and signs `fund_escrow`.
-   The order is paid only because the buyer's own funding reached the amount.
+4. The buyer's wallet (`WalletProvider`) reviews the decoded transactions and signs `fund_escrow`,
+   then the EURC shipping payment to the escrow's pinned platform address (built by
+   `buildShippingPaymentTransaction` as the next transaction in the buyer's sequence, since a
+   Soroban transaction holds one operation). The order is paid only because the buyer's own
+   funding reached the amount.
 5. `register_escrow` records `funded_at`.
 6. The `DeliveryOracle` reports the parcel delivered; the anchoring job batches the claim and
    anchors the root in the registry.
@@ -53,7 +59,8 @@ amount.
 **Scenario 2b: refund with top-up.** The buyer disputes before release. The guard refuses a payout
 to a third address (`BadRecipient` #9), then authorises the whole balance to the buyer. Trustless
 Work withholds its 0.3% and the platform fee; the platform tops the buyer up by exactly those two
-amounts, so the buyer gets 100% back. The reconciler counts it as a complete refund.
+amounts, so the buyer gets 100% of the escrow back. Shipping was never escrowed; Motored refunds it,
+when it does, as on the card rail. The reconciler counts it as a complete refund.
 
 ## How the pieces connect
 
@@ -76,7 +83,8 @@ token pins, the authorisation payload or the testnet fee-address argument.
 ## Tests
 
 - `test/order-flow.test.ts`: both scenarios; asserts seller >= card net (and at most 1 bp + 2 units
-  more), buyer refund = 100%, reconciler pass with 0 unexplained cents, claim verifies, and the
+  more), shipping paid to the platform outside the escrow, platform fee <= 1,000 bps, buyer refund
+  = 100% of the escrow, reconciler pass with 0 unexplained cents, claim verifies, and the
   guard refusals (#8, #9, #10, #13, #17, #24, #28, wrong key).
 - `test/docs-lint.test.ts`: runs [`scripts/lint/docs-lint.mjs`](../../scripts/lint/docs-lint.mjs)
   over the whole repository (no em dashes, no secret-shaped strings, no committed `.env`, no banned

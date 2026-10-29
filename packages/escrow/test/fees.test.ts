@@ -10,6 +10,8 @@ import {
   escrowAmountCents,
   FeeRuleError,
   isEscrowEligible,
+  MAINNET_MAX_PLATFORM_FEE_BPS,
+  orderAmountsCents,
   platformFeeBps,
   quoteEscrow,
   refundTopUp,
@@ -125,15 +127,24 @@ describe('platform fee rule', () => {
     for (const sub of [9989n, 9990n, 9999n, 10000n, 10001n, 10009n, 10010n, 99999n, 100000n]) {
       cases.push({ items: [sub], ship: 189n, ref: false });
     }
+    const cap = { maxPlatformFeeBps: MAINNET_MAX_PLATFORM_FEE_BPS };
     for (const c of cases) {
-      const amount = centsToUnits(escrowAmountCents({ itemGrossCents: c.items, shippingCents: c.ship, referral: c.ref }));
-      const cardNet = centsToUnits(cardNetCents(c.items));
-      if (!isEscrowEligible({ amount, cardNet })) {
+      const o = orderAmountsCents({ itemGrossCents: c.items, shippingCents: c.ship, referral: c.ref });
+      const amount = centsToUnits(o.escrowCents);
+      const cardNet = centsToUnits(o.cardNetCents);
+      // Shipping never enters the escrow: it is the separate payment to the platform.
+      expect(o.shippingToPlatformCents).toBe(c.ship);
+      expect(o.buyerPaysCents).toBe(o.escrowCents + c.ship);
+      if (!isEscrowEligible({ amount, cardNet }, cap)) {
         capped++;
-        expect(platformFeeBps(amount, cardNet) > 9_900n).toBe(true);
+        const bps = platformFeeBps(amount, cardNet);
+        expect(bps < 0n || bps > MAINNET_MAX_PLATFORM_FEE_BPS).toBe(true);
+        // Only carts with an item of about EUR 1 or less, where per-item rounding outweighs the rates.
+        expect(c.items.some((g) => g <= 110n)).toBe(true);
         continue;
       }
-      const q = quoteEscrow({ amount, cardNet });
+      const q = quoteEscrow({ amount, cardNet, shippingToPlatform: centsToUnits(c.ship) }, cap);
+      expect(q.shippingToPlatform).toBe(centsToUnits(c.ship));
       const { trustlessWorkFee, platformFee, receiverAmount } = q.release;
       expect(trustlessWorkFee + platformFee + receiverAmount).toBe(amount);
       expect(receiverAmount >= cardNet).toBe(true);
@@ -145,11 +156,20 @@ describe('platform fee rule', () => {
     expect(capped).toBeGreaterThan(0);
   });
 
-  it('refuses a fee above the 9,900 bps cap (EUR 0.01 item, EUR 47.99 shipping)', () => {
-    const amount = centsToUnits(escrowAmountCents({ itemGrossCents: [1n], shippingCents: 4799n, referral: false }));
-    const cardNet = centsToUnits(cardNetCents([1n]));
-    expect(platformFeeBps(amount, cardNet)).toBe(9967n);
-    expect(feeErrorCode(() => quoteEscrow({ amount, cardNet }))).toBe('PLATFORM_FEE_ABOVE_CAP');
+  it("refuses a fee above Trustless Work's 9,900 bps cap", () => {
+    // Shipping no longer enters the escrow, so no cart reaches this; the rule still holds.
+    expect(platformFeeBps(10_000n, 3n)).toBe(9967n);
+    expect(feeErrorCode(() => quoteEscrow({ amount: 10_000n, cardNet: 3n }))).toBe('PLATFORM_FEE_ABOVE_CAP');
+  });
+
+  it("refuses a fee above the guard's configured cap, and accepts one at it", () => {
+    const amount = centsToUnits(10_500n);
+    const cardNet = centsToUnits(9_500n);
+    expect(quoteEscrow({ amount, cardNet }, { maxPlatformFeeBps: 922n }).platformFeeBps).toBe(922n);
+    expect(feeErrorCode(() => quoteEscrow({ amount, cardNet }, { maxPlatformFeeBps: 921n }))).toBe('PLATFORM_FEE_ABOVE_CAP');
+    // Run 9's testnet cap (500) is below a full-fee order's rate: such an order stayed on card there.
+    expect(isEscrowEligible({ amount, cardNet }, { maxPlatformFeeBps: 500n })).toBe(false);
+    expect(feeErrorCode(() => quoteEscrow({ amount, cardNet }, { maxPlatformFeeBps: 9_901n }))).toBe('INVALID_AMOUNT');
   });
 
   it('refuses a negative fee', () => {
@@ -165,12 +185,63 @@ describe('platform fee rule', () => {
     expect(platformFeeBps(3n, 2n)).toBe(3303n);
   });
 
-  it('a typical order: EUR 100 item, EUR 4.99 shipping, EUR 5 buyer fee', () => {
-    const amount = centsToUnits(escrowAmountCents({ itemGrossCents: [10000n], shippingCents: 499n, referral: false }));
-    expect(amount).toBe(centsToUnits(10999n));
-    const q = quoteEscrow({ amount, cardNet: centsToUnits(9500n) });
-    expect(q.platformFeeBps).toBe(1332n);
+  it('a typical order: EUR 100 item, EUR 4.99 shipping to the platform, EUR 5 buyer fee in the escrow', () => {
+    const o = orderAmountsCents({ itemGrossCents: [10000n], shippingCents: 499n, referral: false });
+    expect(o).toEqual({ escrowCents: 10500n, shippingToPlatformCents: 499n, cardNetCents: 9500n, buyerPaysCents: 10999n });
+    expect(escrowAmountCents({ itemGrossCents: [10000n], referral: false })).toBe(10500n);
+    const amount = centsToUnits(o.escrowCents);
+    const q = quoteEscrow({ amount, cardNet: centsToUnits(9500n), shippingToPlatform: centsToUnits(499n) });
+    expect(q.platformFeeBps).toBe(922n);
+    expect(q.shippingToPlatform).toBe(centsToUnits(499n));
     expect(q.release.receiverAmount >= centsToUnits(9500n)).toBe(true);
+    // The escrow pays out exactly its amount; shipping is not part of the release.
+    expect(q.release.receiverAmount + q.release.platformFee + q.release.trustlessWorkFee).toBe(amount);
+  });
+
+  it('refuses negative shipping', () => {
+    expect(() => orderAmountsCents({ itemGrossCents: [100n], shippingCents: -1n, referral: false })).toThrow(FeeRuleError);
+    expect(feeErrorCode(() => quoteEscrow({ amount: 1_000_000n, cardNet: 900_000n, shippingToPlatform: -1n }))).toBe('INVALID_AMOUNT');
+  });
+});
+
+describe('mainnet fee cap (1,000 bps, shipping outside the escrow)', () => {
+  const cap = { maxPlatformFeeBps: MAINNET_MAX_PLATFORM_FEE_BPS };
+  const bpsFor = (items: bigint[], referral = false) => {
+    const o = orderAmountsCents({ itemGrossCents: items, shippingCents: 4799n, referral });
+    return platformFeeBps(centsToUnits(o.escrowCents), centsToUnits(o.cardNetCents));
+  };
+
+  it('worst case at exact rates: 5% commission + 5% buyer fee quotes 922 bps (about 9.2%, Trustless Work 0.3% included)', () => {
+    // amount = 1.05 x items, card net = 0.95 x items: floor((9970 x 1.05 - 9500) / 1.05) = 922.
+    expect(bpsFor([10_000n])).toBe(922n);
+    expect(bpsFor([100_000n])).toBeLessThan(922n); // above EUR 100 the EUR 5 buyer-fee cap lowers the rate
+    expect(bpsFor([10_000n], true)).toBe(470n); // no buyer fee under a referral: commission less 0.3%
+    expect(922n).toBeLessThan(MAINNET_MAX_PLATFORM_FEE_BPS);
+  });
+
+  it('every cart whose items are each above EUR 1.10 quotes at most 1,000 bps, whatever its shipping', () => {
+    let worst = 0n;
+    for (let g = 111n; g <= 500_000n; g += g < 20_000n ? 1n : 97n) {
+      const bps = bpsFor([g]);
+      if (bps > worst) worst = bps;
+      expect(bps).toBeLessThanOrEqual(1_000n);
+    }
+    const r = prng(11);
+    for (let i = 0; i < 20_000; i++) {
+      const items = Array.from({ length: randint(r, 1, 10) }, () => BigInt(randint(r, 111, i % 2 ? 2_000 : 500_000)));
+      const bps = bpsFor(items);
+      if (bps > worst) worst = bps;
+      expect(bps).toBeLessThanOrEqual(1_000n);
+    }
+    // Per-item rounding of EUR 1.11-2 items lifts the rate above 922, never past the cap.
+    expect(worst).toBeGreaterThan(922n);
+    expect(worst).toBeLessThanOrEqual(1_000n);
+  });
+
+  it('an item of EUR 1.10 is the largest that can exceed the cap; it stays on the card rail', () => {
+    expect(bpsFor([110n])).toBe(1004n);
+    const o = orderAmountsCents({ itemGrossCents: [110n], shippingCents: 499n, referral: false });
+    expect(isEscrowEligible({ amount: centsToUnits(o.escrowCents), cardNet: centsToUnits(o.cardNetCents) }, cap)).toBe(false);
   });
 });
 

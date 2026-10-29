@@ -76,9 +76,9 @@ export interface GuardModelConfig {
   platform: string;
   /**
    * Guard v0.10 `max_platform_fee_bps`: the highest `platform_fee` the guard registers (500 in run 9;
-   * 3,000 planned for mainnet, since the platform fee also carries DPD shipping). Unset, the cap is
-   * not modelled; the example's fee rule (D3b) quotes about 1,289 bps for its sample cart, under the
-   * mainnet cap and above run 9's.
+   * 1,000 planned for mainnet; shipping is paid to the platform address in the funding step, outside
+   * the escrow). Unset, the cap is not modelled; the example's fee rule (D3b) quotes 726 bps for its
+   * sample cart (EUR 180 item, buyer fee capped at EUR 5), under the mainnet cap and above run 9's.
    */
   maxPlatformFeeBps?: number;
   releaseKey: Uint8Array;

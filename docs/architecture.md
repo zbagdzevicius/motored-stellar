@@ -105,7 +105,7 @@ tested), so moving to Trustless Work v2 needs a new guard build for new escrows.
 EURC eligibility (v1 policy, enforced by the marketplace): single-seller carts; a carrier label
 minted by the platform, so the parcel goes to the order's delivery address; a destination where
 the carrier's authenticated tracking has already reported a delivery; a platform fee between 0
-and the guard's cap (`max_platform_fee_bps`, 500 basis points in run 9, 3,000 planned for mainnet; Trustless Work's
+and the guard's cap (`max_platform_fee_bps`, 500 basis points in run 9, 1,000 planned for mainnet; Trustless Work's
 own cap is 9,900). The guard enforces its cap (v0.10): an escrow above it is never registered.
 
 ## 3. Sequence
@@ -178,7 +178,7 @@ Behaviour relied on, from source and tested against both deployed Wasm files:
   dispute is open, then calls `release_signer.require_auth()`. It needs balance >= `amount`, pays
   fees on `amount` and the rest only to the fixed receiver. Any excess stays in the escrow.
 - Fees: `TRUSTLESS_WORK_FEE_BPS = 30` plus `platform_fee` (at most 9,900 bps in Trustless Work; the
-  guard registers only escrows at or under its own cap, set per deploy (500 bps in run 9; 3,000 bps planned for mainnet, because the platform fee also carries the DPD shipping Motored buys; an order whose quote is above the cap stays on the card rail)), both floored on
+  guard registers only escrows at or under its own cap, set per deploy (500 bps in run 9; 1,000 bps planned for mainnet; shipping is paid to the platform address in the funding step, outside the escrow; an order whose quote is above the cap stays on the card rail)), both floored on
   the same base; each recipient's net is the remainder. Every exit transfers both fees first, in
   the same invocation (each only when above zero): if a fee account cannot receive EURC, the whole
   call reverts.
@@ -207,7 +207,7 @@ struct Cfg { admin: Address,            // offline; proposes key changes, applie
              release_pk, resolver_pk, breakglass_pk: BytesN<32>,
              registry: Address, token: Address /* EURC SAC */,
              platform: Address,         // platform fee account, the escrow's `platform` role
-             max_platform_fee_bps: u32, // v0.10: highest escrow platform_fee registered (500 in run 9, 3,000 planned for mainnet)
+             max_platform_fee_bps: u32, // v0.10: highest escrow platform_fee registered (500 in run 9, 1,000 planned for mainnet)
              tw_wasm: BytesN<32>,       // pinned Trustless Work Wasm hash for this network
              tw_fee: Option<Address>,   // Some(a) on the testnet lineage: argument 1 must equal a
              delay: u64, rotate_delay: u64, contest_window: u64 /* 7 days each */ }
@@ -262,7 +262,7 @@ dust, the seller paid alone through `withdraw_remaining_funds`
 
 **Platform fee cap (v0.10).** The guard pins who receives the platform fee and, since v0.10, how
 much: `check_escrow` and `register_escrow` refuse an escrow whose `platform_fee` is above
-`max_platform_fee_bps` (#29), set at construction (set per deploy (500 bps in run 9; 3,000 bps planned for mainnet, because the platform fee also carries the DPD shipping Motored buys; an order whose quote is above the cap stays on the card rail)) and not rotatable.
+`max_platform_fee_bps` (#29), set at construction (set per deploy (500 bps in run 9; 1,000 bps planned for mainnet; shipping is paid to the platform address in the funding step, outside the escrow; an order whose quote is above the cap stays on the card rail)) and not rotatable.
 Trustless Work freezes the fee once the escrow holds a balance, and the guard registers only from
 then, so a registered escrow can never pay the platform a higher rate; an over-cap escrow is never
 registered and every guard branch refuses it. Tests `x15`-`x16` (both lineages) cover one basis
@@ -320,12 +320,17 @@ the plain-language trust statement.
 
 All amounts are in 7-decimal units (1 EURC = 10,000,000 units).
 
-- **Escrow amount.** The order's items plus shipping plus any buyer fee, as charged.
+- **Escrow amount.** The order's items plus any buyer fee, as charged. Shipping (the DPD label
+  Motored buys) is not escrowed: the buyer pays it to the pinned platform address in the funding
+  step, as a separate EURC payment (a Soroban transaction holds one operation, so it is the next
+  transaction in the buyer's sequence after `fund_escrow`); the order is paid only when both land,
+  and a shipping refund is Motored's, as on the card rail. So the platform fee carries only the
+  commission and the buyer fee: at most about 922 bps (9.2%) with 5% each.
 - **Target.** The seller nets in EURC at least what the card rail pays for the same order
   (`card_net`), and at most 1 basis point of the escrow amount more.
 - **Platform fee.** `platform_fee_bps = floor((9970 * amount - 10000 * card_net) / amount)`.
-  Trustless Work's 0.3% comes out of the platform's share. EURC is offered only when the result is
-  between 0 and the guard's cap (`max_platform_fee_bps`, 500 in run 9, 3,000 planned for mainnet; Trustless Work
+  Trustless Work's 0.3% comes out of the platform's share (commission and buyer fee). EURC is offered only when the result is
+  between 0 and the guard's cap (`max_platform_fee_bps`, 500 in run 9, 1,000 planned for mainnet; Trustless Work
   itself allows up to 9,900); the guard refuses to register an escrow above its cap (v0.10). Trustless Work's floors can add at most 1 unit per fee per recipient in the
   recipient's favour; it is logged on its own reconciliation line.
 - **Refunds before release.** A resolution to the buyer returns the balance minus the 0.3% and the
