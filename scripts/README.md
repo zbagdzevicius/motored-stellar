@@ -10,6 +10,7 @@ Deploy and e2e work on **testnet only**. Each one checks the network passphrase 
 | `testnet/deploy.ts` | Sets up a stand-in XEUR issuer, trustlines and its SAC. Deploys the claim registry. Uploads the guard through a fee-bump and deploys it with `Cfg` pinned to Trustless Work testnet Wasm `7c3f7b2a...`. Deploys a Trustless Work deployer instance. Writes the resulting IDs to `testnet-state.json`. | D13 |
 | `testnet/e2e.ts` | Runs orders on testnet: release with an anchored claim, dispute then refund plus top-up, and a partial-funding break-glass refund. `--silent-buyer` adds a claim-based seller payout. Prints stellar.expert links and exports the run log to `scripts/out/`. | D4 (public half), D13 |
 | `testnet/e2e-claims.ts` | The two claim flows: a silent buyer whose seller is paid through dispute resolution against a delivery claim anchored with a 32-level Merkle proof (verified in the guard's `__check_auth`) after the payout delay, and a buyer contest on the guard that blocks the seller payout and ends in a full refund plus top-up. Waits out the 120 s windows once for both. Shared steps live in `testnet/order-kit.ts`. | D4 (public half), D6, D13 |
+| `testnet/refusals.ts` | Lands refused payouts as failed transactions with the guard's error code: wrong fee address (15), seller payout without a claim (8), break-glass to the seller (13), seller payout during a buyer contest (25). Submits only after the enforce-mode simulation fails with the expected code, with a footprint built from the refused call and the accepted alternative on the same escrow; reads the code back from the ledger's diagnostic events. Each escrow is then settled the legitimate way. | D6 (pre-award part), D13 |
 | `metric/index.ts` | Recomputes the Tranche 3 metric from a footprint file and prints PASS or FAIL. | D12 |
 | `claims/recheck.ts` | Re-checks a released order's delivery claim against the registry, using the published leaf format. | D6 |
 
@@ -34,6 +35,7 @@ npm run testnet:keys              # fresh roles + friendbot
 npm run testnet:deploy            # delay = contest window = 120 s for the demo (production: 7 days)
 npm run testnet:e2e               # add -- --silent-buyer to wait for the claim delay
 npm run testnet:e2e-claims        # silent buyer + buyer contest (about 4 minutes)
+npm run testnet:refusals          # refused payouts landed as failed txs (about 3 minutes)
 npm run claims:recheck -- --from-state
 ```
 

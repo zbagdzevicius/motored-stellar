@@ -1,13 +1,13 @@
 # Testnet proofs
 
 Public Stellar **testnet** contract IDs and transaction hashes from the runs behind this code.
-Runs 1 to 3 were copied from lab run logs. Runs 4 and 5 were produced by this repository's own
-scripts (`npm run testnet:keys`, `testnet:deploy`, `testnet:e2e`, `testnet:e2e-claims`). Links go to [stellar.expert](https://stellar.expert/explorer/testnet).
+Runs 1 to 3 were copied from lab run logs. Runs 4 to 6 were produced by this repository's own
+scripts (`npm run testnet:keys`, `testnet:deploy`, `testnet:e2e`, `testnet:e2e-claims`, `testnet:refusals`). Links go to [stellar.expert](https://stellar.expert/explorer/testnet).
 
 Testnet is reset from time to time, and a reset erases these entries. The run notes, fees and
 instruction counts stay in [verification.md](verification.md). To make a fresh proof, run
-`npm run testnet:keys && npm run testnet:deploy && npm run testnet:e2e && npm run testnet:e2e-claims`
-and append the output below with the date. Runs 4 and 5 are re-run and re-logged here after any reset, so their links stay live for reviewers.
+`npm run testnet:keys && npm run testnet:deploy && npm run testnet:e2e && npm run testnet:e2e-claims && npm run testnet:refusals`
+and append the output below with the date. Runs 4 to 6 are re-run and re-logged here after any reset, so their links stay live for reviewers.
 
 Pinned Trustless Work escrow Wasm (used by every run and by the unit tests):
 testnet `7c3f7b2af92ad86092708b23babf80f9e1308d7f3ce18b703b9499192ecc934b`,
@@ -180,6 +180,91 @@ before the delay (guard `TooEarly` = 10); D seller payout with a tampered claim 
 because the buyer contested (guard `Contested` = 25). The claim was re-checked publicly after the
 payout: `registry.verify` true, anchored at ledger time 1793225320, after the guard saw the escrow
 fully funded at 1793225305. Run log: `scripts/out/` (public hashes only, git-ignored).
+
+## Run 6: refusals landed as failed transactions, 29 Oct 2026, 07:02 to 07:05 UTC
+
+Runs 4 and 5 showed the guard's refusals by enforce-mode simulation only, so no refused call ever
+reached the ledger. Run 6 lands four of them: each refused payout below is a real testnet
+transaction that validators included and that **failed** in the Soroban host with the guard's own
+error code, recorded in the transaction's diagnostic events (`Error(Contract, #N)`). Same deployment as runs 4 and 5 (same keys, guard, claim
+registry, XEUR SAC and escrow factory, read from `testnet-state.json`); run by
+`npm run testnet:refusals` (`scripts/testnet/refusals.ts`). Every refused escrow is then settled the
+legitimate way on the same escrow, so each order shows the refused attempt next to the accepted one.
+
+How a refusal is landed (`Chain.landRefusal` in `scripts/lib/soroban.ts`). A failed simulation
+returns no footprint, so a refused call cannot be assembled the usual way. The script (1) simulates
+the refused call in record mode and signs the guard's auth entry with the role's key, (2) simulates
+it again in enforce mode and requires the expected guard error (a call the guard would accept is
+never submitted; any other error stops the step), (3) simulates, without submitting, the accepted
+alternative on the same escrow (for example the refund to the buyer), whose footprint covers the
+guard's config and per-escrow record that `__check_auth` reads, (4) submits the refused call with
+the union of both footprints, the accepted path's resources plus headroom and a resource fee above
+its minimum, and (5) reads the error code back from the ledger's diagnostic events. All four
+expected codes were confirmed from the ledger. Checked again after the run, outside the script:
+the public RPC's `getTransaction` returns `FAILED` for each hash, and stellar.expert's own indexed
+copy of each transaction (its public API) has result `txFailed` and the guard's
+`Error(Contract, #N)` in the diagnostic events (ledgers 5446750, 5446758, 5446765 and 5446777;
+fee charged 28,061 to 28,477 stroops each).
+
+| Contract | ID |
+|---|---|
+| Guard (as run 4) | [`CBYWR2P3...Y467EX`](https://stellar.expert/explorer/testnet/contract/CBYWR2P3PEJS2IYIHVVQ2OHXM2ZHGKZDVVDIWI3JCUW7YE4VXNY467EX) |
+| Escrow A (wrong fee address, then release) | [`CBGSH4QH...HUHGRM`](https://stellar.expert/explorer/testnet/contract/CBGSH4QH5KARKGSWMZJ2DL25COQDT4SHZWXWLSD76U632L3VOMHUHGRM) |
+| Escrow B (seller payout without a claim, then refund) | [`CBGIRLMO...OA7ABN`](https://stellar.expert/explorer/testnet/contract/CBGIRLMOZKM3GXJXFP57HUG2CZYCENIDXNXZCA7Q4LX46SAVVLOA7ABN) |
+| Escrow C (break-glass to the seller, then refund) | [`CAA7HKSD...PDQGO4`](https://stellar.expert/explorer/testnet/contract/CAA7HKSDYSUYNWJEEH2JZPJ42M5QVBZUCBGPMEUJQIRZLK2CE2PDQGO4) |
+| Escrow E (seller payout during the buyer contest, then refund) | [`CB4NGNZE...J65OBP`](https://stellar.expert/explorer/testnet/contract/CB4NGNZEMAEOAKL4MLUDJQX6AV7YBBMVIM22HYHW5CIRYGE4RRJ65OBP) |
+
+Failed transactions (the point of this run):
+
+| Refused payout | Guard error | Failed transaction |
+|---|---|---|
+| A: release with a wrong `trustless_work_address` (fee account not the pinned one) | `Error(Contract, #15)` `BadFeeAddr` | [`92a1b01c2457...`](https://stellar.expert/explorer/testnet/tx/92a1b01c245703781078d17ece3768ab5913f383099954077ae18d5021a3a598) |
+| B: resolver pays the seller with no delivery claim and no buyer approval | `Error(Contract, #8)` `NoClaim` | [`e592b600ab8f...`](https://stellar.expert/explorer/testnet/tx/e592b600ab8fd2e05269c0eedc848b7490ac35ae80591944a71fd90f5422a651) |
+| C: break-glass key pays the seller | `Error(Contract, #13)` `NotWholeToBuyer` | [`e2067727b074...`](https://stellar.expert/explorer/testnet/tx/e2067727b0741da618e6f3f3a7775104361efa676947bf9efc61f837e2a79032) |
+| E: seller payout while the buyer's contest stands | `Error(Contract, #25)` `Contested` | [`f75e15032094...`](https://stellar.expert/explorer/testnet/tx/f75e150320940a6c55718202ade29a18047feece3cd1b1d8895a80c86312c2c1) |
+
+Every step of the run:
+
+| Step | Transaction |
+|---|---|
+| A: escrow deploy+init through the Trustless Work deployer | [`93a5889baca2...`](https://stellar.expert/explorer/testnet/tx/93a5889baca20316095eed891af48b699a4533e888bf9a70f8d024e3cbe173af) |
+| A: buyer funds 100 XEUR | [`3645a42a33e7...`](https://stellar.expert/explorer/testnet/tx/3645a42a33e7eb24f61e1836fbd8602969bb8a8ea3a875e62a549ff5be9759a9) |
+| A: escrow registered with the guard | [`cc82a7d154d9...`](https://stellar.expert/explorer/testnet/tx/cc82a7d154d9ce3d008b477825f731ebc6a7c869fed198c7ec108e2202ed2b6c) |
+| A: buyer approves the milestone | [`d5110be4986c...`](https://stellar.expert/explorer/testnet/tx/d5110be4986cab603cd5fd10250d0a65e3825ce49136c9932bdb5d841f92197b) |
+| A: guard records the approval | [`5c77a1040693...`](https://stellar.expert/explorer/testnet/tx/5c77a104069362148dc9c247a6fac8e0c046611ffe3448cd6b561116b07d2ad2) |
+| **A: FAILED on chain.** `release_funds` with a wrong `trustless_work_address`, signed with the release key: `Error(Contract, #15)` `BadFeeAddr` | [`92a1b01c2457...`](https://stellar.expert/explorer/testnet/tx/92a1b01c245703781078d17ece3768ab5913f383099954077ae18d5021a3a598) |
+| A: then `release_funds` with the pinned fee address pays the seller | [`d53730332759...`](https://stellar.expert/explorer/testnet/tx/d53730332759b2483113d34e7f693a66b5b60893404d6d874fcc6db44f140d6d) |
+| B: escrow deploy+init | [`a0c89f90c9fa...`](https://stellar.expert/explorer/testnet/tx/a0c89f90c9fa60026d8cfd051e265818f0d134dd8ead52f6dedcea77eed5744a) |
+| B: buyer funds 100 XEUR | [`46f342d3ff16...`](https://stellar.expert/explorer/testnet/tx/46f342d3ff16fc4e125e132793a3fede9872ac8520bd820de12924f4c2aa5d46) |
+| B: escrow registered | [`16b2c780e108...`](https://stellar.expert/explorer/testnet/tx/16b2c780e108cc6723e49505f25ae3c01e32fb8215680802be777c8a067c86cd) |
+| B: buyer opens a dispute | [`2440655946f9...`](https://stellar.expert/explorer/testnet/tx/2440655946f95af7fa5f890421fd1658efa7f56fd32bc5231c981b7188d73c36) |
+| B: guard records the dispute | [`97bbc716d809...`](https://stellar.expert/explorer/testnet/tx/97bbc716d809fdb20114d992700676f8b5298b969ea408da8a0df4d8e3e1f2c8) |
+| **B: FAILED on chain.** `resolve_dispute` paying the seller without a delivery claim (and without buyer approval), signed with the resolver key: `Error(Contract, #8)` `NoClaim` | [`e592b600ab8f...`](https://stellar.expert/explorer/testnet/tx/e592b600ab8fd2e05269c0eedc848b7490ac35ae80591944a71fd90f5422a651) |
+| B: then the whole balance is resolved to the buyer | [`c8a22efa4d6b...`](https://stellar.expert/explorer/testnet/tx/c8a22efa4d6b2dcd56864bd23f227cd7a10692616f80409dc152a0a222d90d08) |
+| B: platform tops up the two escrow fees (5 XEUR), buyer nets 100% | [`2a18ce3a6cf2...`](https://stellar.expert/explorer/testnet/tx/2a18ce3a6cf24c3cd2a13c887f465a7db345eab357e52b389c11482c5682aff4) |
+| C: escrow deploy+init | [`a545ee2be5c8...`](https://stellar.expert/explorer/testnet/tx/a545ee2be5c889bdcccb82bd3e143e2e8482c923a73977d682a4e906f43ba1bf) |
+| C: buyer funds 40 XEUR (40%) | [`d129a1eb091b...`](https://stellar.expert/explorer/testnet/tx/d129a1eb091b2ab0f12af4a421583a65f26092235beffd3bb1cf634b538d08c4) |
+| C: escrow registered at 40% funding | [`8695c2df971a...`](https://stellar.expert/explorer/testnet/tx/8695c2df971a1c8ed827d50ebef969e62446735b6a164c98a9795d3c485094f8) |
+| C: platform opens a dispute | [`62f12e595475...`](https://stellar.expert/explorer/testnet/tx/62f12e595475514836288a8f8e3afa5767e76cdac1c9809a0cfc9ea010d5f5cd) |
+| **C: FAILED on chain.** break-glass key tries `resolve_dispute` paying the seller: `Error(Contract, #13)` `NotWholeToBuyer` | [`e2067727b074...`](https://stellar.expert/explorer/testnet/tx/e2067727b0741da618e6f3f3a7775104361efa676947bf9efc61f837e2a79032) |
+| C: then break-glass refunds the whole balance to the buyer | [`b6ff56eb889a...`](https://stellar.expert/explorer/testnet/tx/b6ff56eb889a0c96b3b77b34892a9c2a6ed772df0bd7a4134bf0cf43b2a4873b) |
+| C: platform tops up the two escrow fees (2 XEUR) | [`bfffad7c23e3...`](https://stellar.expert/explorer/testnet/tx/bfffad7c23e3d01f4be16629107aa654fb4f9c90c69eb4d1c8f15d4958ae990e) |
+| E: escrow deploy+init | [`eac8a3ea8ca6...`](https://stellar.expert/explorer/testnet/tx/eac8a3ea8ca6c02439875781fc1106b09cab02dcb27a3420be97333cda1fce5f) |
+| E: buyer funds 100 XEUR | [`68e0c1892698...`](https://stellar.expert/explorer/testnet/tx/68e0c1892698f9af7936cabb3b070d6824e09ef3f059a29ab7131f48f5b8366e) |
+| E: escrow registered (records full funding) | [`460a79f4ffbd...`](https://stellar.expert/explorer/testnet/tx/460a79f4ffbd5136294a09e181966e5df668a4a66b29b52bbdcb9a6a687c6708) |
+| E: buyer approves the milestone | [`b6b01b2563db...`](https://stellar.expert/explorer/testnet/tx/b6b01b2563db84e3ce40a00ee08358031657ac62b421b8393a461e4b83ad4e35) |
+| E: guard records the approval | [`e90b902530cd...`](https://stellar.expert/explorer/testnet/tx/e90b902530cd834f33a46f05e0b635fce852d90782bf222fdf7f3d381807654c) |
+| E: seller opens a dispute | [`2b79d640fc17...`](https://stellar.expert/explorer/testnet/tx/2b79d640fc1721531ffee106d167d2d2d256e192941ad391267e7535fe5c58a4) |
+| E: guard records the dispute (contest window opens) | [`7bc4e30d9d2f...`](https://stellar.expert/explorer/testnet/tx/7bc4e30d9d2f6e4fdde8a6767dffc62e8e7aa39e761e857ba875c10072a32824) |
+| E: buyer calls `contest` on the guard inside the window | [`f9724257377f...`](https://stellar.expert/explorer/testnet/tx/f9724257377f6ad87d038da63b8cc5d2408878378a49e18bb2b728c95b2b36b1) |
+| **E: FAILED on chain.** claimless seller payout through `resolve_dispute` while the buyer's contest stands, signed with the resolver key: `Error(Contract, #25)` `Contested` | [`f75e15032094...`](https://stellar.expert/explorer/testnet/tx/f75e150320940a6c55718202ade29a18047feece3cd1b1d8895a80c86312c2c1) |
+| E: then the whole balance is resolved to the buyer | [`caea3ddbc004...`](https://stellar.expert/explorer/testnet/tx/caea3ddbc004f577e5d29f088b22b1310b03aee60a3ed32c5d4b4423a736cc02) |
+| E: platform tops up the two escrow fees (5 XEUR), buyer nets 100% | [`b63dff8d98a3...`](https://stellar.expert/explorer/testnet/tx/b63dff8d98a3bdc5432eae15afdfa5ba7d7f3a8596f9baebb48668cb94406ec0) |
+
+Not landed in this run: the other refused paths (the release before buyer approval, which Trustless
+Work itself refuses; the release signed with the resolver key; `TooEarly` and the tampered claim from
+run 5) are still unit tests plus enforce-mode simulations. The same `landRefusal` step can land them.
+Run log: `scripts/out/refusals-*.json` (public hashes only, git-ignored).
 
 ## Sponsored accounts and fee-bumps (wallet lab, 24 Oct 2026)
 

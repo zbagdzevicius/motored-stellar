@@ -15,6 +15,7 @@
     "testnet:deploy": "tsx testnet/deploy.ts",
     "testnet:e2e": "tsx testnet/e2e.ts",
     "testnet:e2e-claims": "tsx testnet/e2e-claims.ts",
+    "testnet:refusals": "tsx testnet/refusals.ts",
     "metric": "tsx metric/index.ts",
     "claims:recheck": "tsx claims/recheck.ts"
   },

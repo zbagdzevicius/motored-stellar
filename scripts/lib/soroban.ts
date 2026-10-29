@@ -15,6 +15,7 @@ import {
   Contract,
   Keypair,
   Operation,
+  SorobanDataBuilder,
   Transaction,
   TransactionBuilder,
   rpc,
@@ -41,10 +42,28 @@ export interface TxRecord {
   hash: string;
   status: TxStatus;
   link: string;
+  errors?: string[];
 }
 
 export interface TxResult extends TxRecord {
   returnValue?: xdr.ScVal;
+  /** For a FAILED transaction: the contract errors the ledger recorded in its diagnostic events, e.g. "Error(Contract, #15) BadFeeAddr". */
+  errors?: string[];
+}
+
+/** A refused call that was landed on chain on purpose and failed there with the guard's error. */
+export interface LandedRefusal extends TxResult {
+  /** The guard error code the enforce-mode simulation predicted before submission. */
+  expectedCode: number;
+  /** True when the ledger's own diagnostic events carry Error(Contract, #expectedCode). */
+  confirmed: boolean;
+}
+
+/** The accepted alternative on the same escrow, simulated only, whose footprint covers the guard's reads. */
+export interface AcceptedSibling {
+  args: xdr.ScVal[];
+  key: Keypair;
+  branch: GuardBranch;
 }
 
 export interface Refusal {
@@ -87,6 +106,53 @@ export function guardSignature(branch: GuardBranch, sig: Buffer): xdr.ScVal {
   return variant(branch.kind, bytes(sig));
 }
 
+const keyId = (k: xdr.LedgerKey): string => k.toXDR('base64');
+
+/**
+ * Union of Soroban footprints. A key that any input writes stays read-write and is
+ * dropped from the read-only set (a key may not appear in both).
+ */
+export function mergeFootprints(fps: xdr.LedgerFootprint[]): { readOnly: xdr.LedgerKey[]; readWrite: xdr.LedgerKey[] } {
+  const rw = new Map<string, xdr.LedgerKey>();
+  const ro = new Map<string, xdr.LedgerKey>();
+  for (const fp of fps) for (const k of fp.readWrite()) rw.set(keyId(k), k);
+  for (const fp of fps) for (const k of fp.readOnly()) if (!rw.has(keyId(k))) ro.set(keyId(k), k);
+  return { readOnly: [...ro.values()], readWrite: [...rw.values()] };
+}
+
+/** Contract error codes found in diagnostic events (topics or data), in order, de-duplicated. */
+export function contractErrorCodes(events: xdr.DiagnosticEvent[] | undefined): number[] {
+  const out: number[] = [];
+  const visit = (v: xdr.ScVal): void => {
+    if (v.switch().name === 'scvError' && v.error().switch().name === 'sceContract') {
+      const c = v.error().contractCode();
+      if (!out.includes(c)) out.push(c);
+    } else if (v.switch().name === 'scvVec') for (const x of v.vec() ?? []) visit(x);
+  };
+  for (const d of events ?? []) {
+    const body = d.event().body().v0();
+    for (const t of body.topics()) visit(t);
+    visit(body.data());
+  }
+  return out;
+}
+
+/** "Error(Contract, #N) Name" for a guard error code. */
+export const guardErrorLabel = (code: number): string => `Error(Contract, #${code})${GUARD_ERRORS[code] ? ` ${GUARD_ERRORS[code]}` : ''}`;
+
+/** Diagnostic events of a landed transaction, from the RPC field or, failing that, the v4 meta. */
+function diagnosticEventsOf(g: rpc.Api.GetFailedTransactionResponse | rpc.Api.GetSuccessfulTransactionResponse): xdr.DiagnosticEvent[] {
+  if (g.diagnosticEventsXdr && g.diagnosticEventsXdr.length > 0) return g.diagnosticEventsXdr;
+  try {
+    const m = g.resultMetaXdr;
+    if (m.switch() === 4) return m.v4().diagnosticEvents();
+    if (m.switch() === 3) return m.v3().sorobanMeta()?.diagnosticEvents() ?? [];
+  } catch {
+    // Unknown meta shape: no events.
+  }
+  return [];
+}
+
 export class Chain {
   readonly server: rpc.Server;
   readonly runLog: Array<TxRecord | Refusal | { label: string; note: unknown }> = [];
@@ -105,8 +171,8 @@ export class Chain {
   }
 
   private record(r: TxResult): TxResult {
-    this.runLog.push({ label: r.label, hash: r.hash, status: r.status, link: r.link });
-    this.print(`== ${r.label}: ${r.status} ${r.link}`);
+    this.runLog.push({ label: r.label, hash: r.hash, status: r.status, link: r.link, ...(r.errors ? { errors: r.errors } : {}) });
+    this.print(`== ${r.label}: ${r.status}${r.errors?.length ? ` [${r.errors.join('; ')}]` : ''} ${r.link}`);
     return r;
   }
 
@@ -134,7 +200,10 @@ export class Chain {
       await new Promise((ok) => setTimeout(ok, POLL_MS));
       const g = await this.server.getTransaction(r.hash);
       if (g.status === rpc.Api.GetTransactionStatus.SUCCESS) return this.record({ label, hash: r.hash, status: 'SUCCESS', link, returnValue: g.returnValue });
-      if (g.status === rpc.Api.GetTransactionStatus.FAILED) return this.record({ label, hash: r.hash, status: 'FAILED', link });
+      if (g.status === rpc.Api.GetTransactionStatus.FAILED) {
+        const errors = contractErrorCodes(diagnosticEventsOf(g)).map(guardErrorLabel);
+        return this.record({ label, hash: r.hash, status: 'FAILED', link, errors });
+      }
     }
     return this.record({ label, hash: r.hash, status: 'TIMEOUT', link });
   }
@@ -217,6 +286,72 @@ export class Chain {
     }
     this.note(`${label}: enforce-sim cost`, cost);
     return this.send(label, rpc.assembleTransaction(tx1, enf).build(), [submitter]);
+  }
+
+  /**
+   * Lands a call the guard refuses, so the refusal is a FAILED transaction on the ledger
+   * rather than a local simulation. Never submits a call the guard would accept:
+   *
+   * 1. record-mode simulation of the refused call, sign the guard's auth entry with `key`;
+   * 2. enforce-mode simulation must fail with `expectCode` (if it passes, or fails with any
+   *    other error, nothing is submitted and a refusal is returned);
+   * 3. the accepted alternative on the same escrow (`accepted`) is simulated in enforce mode,
+   *    never submitted. A failed simulation returns no footprint, and the record-mode one
+   *    does not cover the guard's own `__check_auth` reads; the accepted path reads the same
+   *    guard config and per-escrow record, so the union of the two footprints covers every
+   *    entry the refused call touches before the guard rejects it;
+   * 4. the refused call is submitted with that union footprint, the accepted path's resources
+   *    plus headroom and a resource fee above its minimum, so validators include it and it
+   *    fails in the host with the guard's error;
+   * 5. the error is read back from the ledger's diagnostic events (`confirmed`).
+   */
+  async landRefusal(
+    label: string,
+    submitter: Keypair,
+    escrow: string,
+    fn: string,
+    args: xdr.ScVal[],
+    key: Keypair,
+    branch: GuardBranch,
+    expectCode: number,
+    accepted: AcceptedSibling,
+  ): Promise<LandedRefusal | Refusal> {
+    const rec = await this.server.simulateTransaction(await this.contractTx(submitter.publicKey(), escrow, fn, args));
+    if (rpc.Api.isSimulationError(rec)) return this.refuse(`${label} (record-sim)`, simCost(rec).error ?? 'error');
+    if (!rpc.Api.isSimulationSuccess(rec) || !rec.result || rec.result.auth.length === 0 || !rec.transactionData) return this.refuse(label, 'no auth entry to sign');
+    const signed = await this.signGuardEntry(rec.result.auth[0] as xdr.SorobanAuthorizationEntry, key, branch);
+    const tx1 = await this.contractTx(submitter.publicKey(), escrow, fn, args, [signed]);
+    const enf = await this.server.simulateTransaction(tx1, undefined, 'enforce');
+    if (!rpc.Api.isSimulationError(enf)) return this.refuse(label, `enforce-sim PASSES: not submitted (expected ${guardErrorLabel(expectCode)})`);
+    const m = enf.error.match(/Error\(Contract, #(\d+)\)/);
+    if (!m || Number(m[1]) !== expectCode) return this.refuse(label, `expected ${guardErrorLabel(expectCode)}, simulation said ${simCost(enf).error}; not submitted`);
+
+    const rec2 = await this.server.simulateTransaction(await this.contractTx(submitter.publicKey(), escrow, fn, accepted.args));
+    if (!rpc.Api.isSimulationSuccess(rec2) || !rec2.result || rec2.result.auth.length === 0) return this.refuse(label, 'accepted sibling: record-sim failed');
+    const signed2 = await this.signGuardEntry(rec2.result.auth[0] as xdr.SorobanAuthorizationEntry, accepted.key, accepted.branch);
+    const enf2 = await this.server.simulateTransaction(await this.contractTx(submitter.publicKey(), escrow, fn, accepted.args, [signed2]), undefined, 'enforce');
+    if (!rpc.Api.isSimulationSuccess(enf2) || !enf2.transactionData) return this.refuse(label, `accepted sibling: enforce-sim ${simCost(enf2).error ?? 'no data'}`);
+
+    const sib = enf2.transactionData.build();
+    const fp = mergeFootprints([rec.transactionData.build().resources().footprint(), sib.resources().footprint()]);
+    const res = sib.resources();
+    const instructions = Math.min(Math.ceil(res.instructions() * 1.5) + 2_000_000, 400_000_000);
+    const resourceFee = BigInt(enf2.minResourceFee) * 2n + 10_000_000n;
+    const data = new SorobanDataBuilder()
+      .setFootprint(fp.readOnly, fp.readWrite)
+      .setResources(instructions, res.diskReadBytes() + 20_000, res.writeBytes() + 5_000)
+      .setResourceFee(resourceFee)
+      .build();
+    this.note(`${label}: enforce-sim refuses with ${guardErrorLabel(expectCode)}; landing it with a manual footprint`, {
+      readOnly: fp.readOnly.length, readWrite: fp.readWrite.length, instructions, resourceFee,
+    });
+    const acct = await this.server.getAccount(submitter.publicKey());
+    const op = new Contract(escrow).call(fn, ...args);
+    op.body().invokeHostFunctionOp().auth([signed]);
+    const tx = new TransactionBuilder(acct, { fee: CONTRACT_BASE_FEE, networkPassphrase: this.cfg.passphrase }).addOperation(op).setSorobanData(data).setTimeout(300).build();
+    const r = await this.send(label, tx, [submitter]);
+    const confirmed = r.status === 'FAILED' && (r.errors ?? []).some((e) => e.startsWith(`Error(Contract, #${expectCode})`));
+    return { ...r, expectedCode: expectCode, confirmed };
   }
 
   /** Classic operations (trustlines, payments) in one transaction. */
