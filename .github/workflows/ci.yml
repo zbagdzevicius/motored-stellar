@@ -1,0 +1,108 @@
+name: ci
+
+# No secrets are used anywhere in CI. The testnet end-to-end run is manual:
+#   npm run testnet:keys && npm run testnet:deploy && npm run testnet:e2e
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  secrets-and-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check for secrets (seeds, phrases, .env, key files)
+        run: ./scripts/check-secrets.sh
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Docs lint (em dashes, secret-shaped strings, banned terms)
+        run: node scripts/lint/docs-lint.mjs
+
+  typescript:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "${{ matrix.node }}" }
+      - name: Install
+        # npm ci needs a committed package-lock.json. Until the first lockfile is committed, fall
+        # back to npm install so the workflow still runs.
+        run: |
+          if [ -f package-lock.json ]; then npm ci --no-audit --no-fund
+          else npm install --no-audit --no-fund; fi
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit tests (vitest, every workspace; no network)
+        run: npm test --workspaces --if-present
+      - name: Example order flow (in-memory)
+        run: npm run example
+
+  contracts:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts
+    env:
+      # Read-only RPC used only to fetch Trustless Work's deployed mainnet Wasm by hash for the
+      # guard tests. Override it with the repository variable TW_MAINNET_RPC_URL (not a secret; it is
+      # a public endpoint). Without the variable, the public endpoint below is used (healthy on
+      # 28 Oct 2026); the fetched file is still checked against SHA256SUMS.
+      TW_MAINNET_RPC_URL: ${{ vars.TW_MAINNET_RPC_URL || 'https://mainnet.sorobanrpc.com' }}
+      TW_WASM_SRC_DIR: ${{ github.workspace }}/.tw-wasm-cache
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the Rust toolchain pinned in contracts/rust-toolchain.toml
+        run: |
+          rustup toolchain install || rustup show
+          rustup target list --installed
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            contracts/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('contracts/Cargo.lock', 'contracts/rust-toolchain.toml') }}
+      - name: Cache Trustless Work Wasm (content-addressed by SHA256SUMS)
+        uses: actions/cache@v4
+        with:
+          path: .tw-wasm-cache
+          key: tw-wasm-${{ hashFiles('contracts/third_party/tw-wasm/SHA256SUMS') }}
+      - name: Install Stellar CLI 23.4.0 (pinned release asset, checked by sha256)
+        # The version the lab and run 4 used. The digest is the one GitHub publishes for this asset.
+        env:
+          STELLAR_CLI_VERSION: "23.4.0"
+          STELLAR_CLI_SHA256: "c311edbf9f58b9f3e083d4d56227ba501f599a1a2d561016a4d9994f5c2f64f2"
+        run: |
+          asset="stellar-cli-${STELLAR_CLI_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          curl -fsSL -o "/tmp/$asset" \
+            "https://github.com/stellar/stellar-cli/releases/download/v${STELLAR_CLI_VERSION}/$asset"
+          echo "${STELLAR_CLI_SHA256}  /tmp/$asset" | sha256sum -c -
+          mkdir -p "$HOME/.local/bin"
+          tar -xzf "/tmp/$asset" -C "$HOME/.local/bin" stellar
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/stellar" --version
+      - name: Fetch Trustless Work Wasm by hash (verified against SHA256SUMS)
+        run: |
+          if [ -z "${{ vars.TW_MAINNET_RPC_URL }}" ]; then
+            echo "::warning::TW_MAINNET_RPC_URL is not set; using the public endpoint $TW_MAINNET_RPC_URL"
+          fi
+          mkdir -p "$TW_WASM_SRC_DIR"
+          ./third_party/tw-wasm/fetch.sh
+          cp third_party/tw-wasm/*.wasm "$TW_WASM_SRC_DIR"/
+      - name: Build contract Wasm (wasm32v1-none)
+        # The guard tests import the built claim-registry and fake-escrow Wasm and include the
+        # guard's own Wasm, so the Wasm build must run before cargo test.
+        run: stellar contract build
+      - name: Test
+        # Cargo.lock is committed; --locked fails the job if it drifts from Cargo.toml.
+        run: cargo test --locked -- --test-threads=1
