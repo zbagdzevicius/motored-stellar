@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Money rules for an EURC escrow order (SCF deliverable D3b).
+// Money rules for an EURC escrow order (pre-award; used by SCF deliverable D3).
 //
 // The seller must net in EURC at least what the card rail pays for the same order
 // (`cardNet`: each item's gross minus the marketplace commission, rounded per item)

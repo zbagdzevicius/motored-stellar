@@ -1,4 +1,4 @@
-// The claim anchoring job (D6): turns delivered events into claims, batches them
+// The claim anchoring job (pre-award; used by SCF D6): turns delivered events into claims, batches them
 // into a Merkle tree and anchors the root through the registry. Run `ingest` as
 // events arrive (or on a short poll) and `anchorBatch` hourly.
 import { equalBytes, toU64 } from "./bytes.js";

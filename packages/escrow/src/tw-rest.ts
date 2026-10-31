@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Trustless Work v1 REST client for single-release escrows (SCF deliverable D1).
+// Trustless Work v1 REST client for single-release escrows (pre-award; used by SCF deliverable D1).
 //
 // Request shapes follow Trustless Work's published API reference
 // (docs.trustlesswork.com, "API REST > Single Release Escrow", and the payload

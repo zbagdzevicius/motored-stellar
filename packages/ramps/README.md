@@ -1,7 +1,7 @@
 # @motored-stellar/ramps
 
 SEPA on-ramp and off-ramp for EURC on Stellar, behind one small port.
-SCF deliverable **D5: Bridge on-ramp and off-ramp in sandbox**.
+Pre-award, not billed; used by SCF deliverable **D5: Bridge on-ramp and off-ramp in sandbox**.
 
 - **Buyer on-ramp.** Hosted KYC link, then a EUR virtual account (an IBAN) whose
   SEPA deposits are delivered as EURC on Stellar to the buyer's own wallet. The

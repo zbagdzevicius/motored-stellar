@@ -1,5 +1,5 @@
 /**
- * Daily aggregate report (SCF D12).
+ * Daily aggregate report (pre-award; used by SCF D12).
  *
  * Folds one UTC day of 15-minute runs into a single pass/fail report with
  * counts. The report carries no escrow IDs, order references, addresses or

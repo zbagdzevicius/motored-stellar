@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Escrow event reader (SCF deliverable D1; consumed by reconciliation).
+// Escrow event reader (pre-award; used by SCF deliverable D1; consumed by reconciliation).
 //
 // Trustless Work v1 emits one event per state change, topic = [symbol], with
 // these data shapes (from the contract's `events/handler.rs`, confirmed against

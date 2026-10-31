@@ -1,7 +1,7 @@
 {
   "name": "@motored-stellar/eurc",
   "version": "0.10.0",
-  "description": "EURC on Stellar: asset constants, trustline checks, CAP-33 sponsored accounts and trustlines, and an allowlisted fee-bump service (SCF D2).",
+  "description": "EURC on Stellar: asset constants, trustline checks, CAP-33 sponsored accounts and trustlines, and an allowlisted fee-bump service (pre-award; used by SCF D2).",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./dist/index.js",

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Escrow lifecycle for one order, over the EscrowApi port (SCF deliverables D1,
+// Escrow lifecycle for one order, over the EscrowApi port (pre-award; used by SCF deliverables D1,
 // D3b). It encodes the order-side rules of docs/architecture.md, section 7:
 //
 //  - every escrow field is final before the buyer sees the address: a missing
