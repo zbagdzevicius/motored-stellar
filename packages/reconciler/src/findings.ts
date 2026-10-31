@@ -8,7 +8,8 @@
  * the result (an event gap, a read error) or a hard control was breached (a
  * cap, a fee account that cannot receive EURC).
  *
- * The first seven kinds are the named failure states of SCF deliverable D12.
+ * The first seven kinds are the named failure states (pre-award detection;
+ * SCF deliverable D12 bills only the live responses to them).
  */
 import type { Severity } from "./ports.js";
 import type { Units } from "./units.js";

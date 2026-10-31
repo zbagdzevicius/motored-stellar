@@ -1,5 +1,5 @@
 /**
- * Tranche 3 on-chain metric (SCF deliverable D12) for a registered footprint.
+ * Tranche 3 on-chain metric (pre-award; not billed, used by SCF deliverable D12) for a registered footprint.
  *
  * The metric definition itself lives in one place, `computeMetric` in
  * @motored-stellar/reconciler (see docs/metric.md): releases and resolutions to

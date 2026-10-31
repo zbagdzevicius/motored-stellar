@@ -1,7 +1,7 @@
 {
   "name": "@motored-stellar/reconciler",
   "version": "0.10.0",
-  "description": "15-minute EURC escrow reconciliation, daily pass/fail report and the Tranche 3 on-chain metric computation (SCF D3b, D7 hooks, D12).",
+  "description": "15-minute EURC escrow reconciliation, daily pass/fail report and the Tranche 3 on-chain metric computation (pre-award; used by SCF D3b, D7 hooks, D12).",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./dist/index.js",

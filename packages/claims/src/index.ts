@@ -1,4 +1,4 @@
-// @motored-stellar/claims: delivery claims for the escrow guard (SCF deliverable D6).
+// @motored-stellar/claims: delivery claims for the escrow guard (pre-award; used by SCF deliverable D6).
 export * from "./bytes.js";
 export * from "./leaf.js";
 export * from "./merkle.js";

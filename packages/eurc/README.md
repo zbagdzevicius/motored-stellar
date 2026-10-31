@@ -1,7 +1,7 @@
 # @motored-stellar/eurc
 
 EURC handling on Stellar for an escrow marketplace, so a buyer or seller can
-hold and move EURC with 0 XLM in their wallet. Serves SCF deliverable
+hold and move EURC with 0 XLM in their wallet. Pre-award, not billed; used by SCF deliverable
 **D2: sponsored accounts, EURC trustlines and fee-bumps**.
 
 Testnet only. Mainnet constants are kept as documented references and are

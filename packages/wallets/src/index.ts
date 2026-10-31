@@ -1,7 +1,7 @@
 /**
  * @motored-stellar/wallets
  *
- * Wallet connector layer for the EURC escrow flow (SCF #46 deliverable D2):
+ * Wallet connector layer for the EURC escrow flow (pre-award; used by SCF #46 deliverable D2):
  * a `WalletProvider` port, a Privy embedded-wallet adapter (raw-hash signing),
  * a Stellar Wallets Kit adapter and a local `KeypairWallet` for tests.
  */

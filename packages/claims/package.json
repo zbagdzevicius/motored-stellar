@@ -1,7 +1,7 @@
 {
   "name": "@motored-stellar/claims",
   "version": "0.10.0",
-  "description": "Delivery claims for the escrow guard: claim leaf, hourly Merkle batches, registry anchoring, public re-check and TTL upkeep (SCF D6).",
+  "description": "Delivery claims for the escrow guard: claim leaf, hourly Merkle batches, registry anchoring, public re-check and TTL upkeep (pre-award; used by SCF D6).",
   "license": "Apache-2.0",
   "type": "module",
   "engines": {

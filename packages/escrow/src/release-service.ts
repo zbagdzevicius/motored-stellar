@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Release service (SCF deliverable D6, submission path). Builds `release_funds`,
+// Release service (pre-award, submission path; used by SCF deliverable D6). Builds `release_funds`,
 // `resolve_dispute` and `withdraw_remaining_funds` directly against the escrow
 // contract through Soroban RPC, with the guard's custom-account authorization
 // entry. Trustless Work's REST release endpoints return an unsigned XDR for a

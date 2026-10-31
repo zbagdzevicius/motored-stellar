@@ -16,6 +16,8 @@ The package also exports `computeMetric()`, the pure computation behind
 
 ## SCF deliverables served
 
+Pre-award, not billed: the deliverables below bill only the live wiring around this package.
+
 | Deliverable | What this package provides |
 |---|---|
 | Reconciliation (Motored-funded, not billed since the 29 Oct 2026 budget cut) | The reconciliation rule (run every 15 minutes on testnet escrows): fee legs predicted with Trustless Work's own arithmetic (`tw-math.ts`), rounding in the recipient's favour predicted exactly, refund top-ups on their own line |

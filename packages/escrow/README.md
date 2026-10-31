@@ -4,7 +4,8 @@ Trustless Work v1 single-release escrow in EURC for one marketplace order, the
 guard-authorised release service, and the money rules that decide the platform
 fee, the caps, the rounding and the refund top-up. Testnet only.
 
-Serves SCF deliverables:
+Pre-award, not billed. Used by SCF deliverables (the deliverables bill only the
+work that wires this package into the order system):
 
 | Deliverable | What in this package |
 |---|---|

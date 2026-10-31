@@ -1,6 +1,6 @@
 # @motored-stellar/claims
 
-The off-chain half of the delivery-claim system (SCF deliverable **D6**: delivery
+The off-chain half of the delivery-claim system (pre-award, not billed; used by SCF deliverable **D6**: delivery
 claims anchored in a registry, the anchoring job and the public re-check library).
 
 When the carrier reports an order's parcel delivered, the operator adds a delivery

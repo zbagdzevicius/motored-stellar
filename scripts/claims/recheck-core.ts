@@ -1,5 +1,5 @@
 /**
- * Public re-check of a released order's delivery claim (SCF deliverable D6).
+ * Public re-check of a released order's delivery claim (pre-award; used by SCF deliverable D6).
  *
  * Given the published claim JSON, anyone can confirm that:
  *   1. the leaf recomputed from the claim's public fields and the escrow address

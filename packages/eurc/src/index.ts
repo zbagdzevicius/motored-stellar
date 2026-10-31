@@ -4,7 +4,7 @@
  * EURC on Stellar for a marketplace escrow: asset constants and SAC
  * derivation, trustline checks, CAP-33 sponsored accounts and trustlines, and
  * an allowlisted fee-bump service so users can transact with 0 XLM.
- * SCF deliverable D2.
+ * Pre-award; used by SCF deliverable D2.
  */
 export * from "./network.js";
 export * from "./asset.js";

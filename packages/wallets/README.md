@@ -1,6 +1,6 @@
 # @motored-stellar/wallets
 
-Wallet connector layer for the EURC escrow flow. Serves SCF deliverable **D2: Privy embedded wallets and Stellar Wallets Kit**.
+Wallet connector layer for the EURC escrow flow. Pre-award, not billed; used by SCF deliverable **D2: Privy embedded wallets and Stellar Wallets Kit**.
 
 Everything that needs a buyer's or seller's signature (funding an escrow, approving a milestone, opening a dispute, a sponsored trustline, an off-ramp payment) depends on one port, `WalletProvider`:
 

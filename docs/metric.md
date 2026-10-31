@@ -27,9 +27,9 @@ design), so it is never in the counted volume. The floor numbers below are uncha
 first funding of a counted escrow) and released or resolved to the seller within 14 days after
 that window ends. The whole metric therefore closes 59 days after the first counted funding, and an
 escrow funded late in the window still has time to close. The closing deadline is day 80 after the
-Tranche 2 payment (week 26 at the latest), inside the 90-day tranche limit, so the funding window
-must start by day 21 after that payment; if it cannot, pro-rated thresholds are agreed with SCF in
-writing by day 21.
+Tranche 2 payment (week 24 at the latest in the 16-week build plan), inside the 90-day tranche
+limit, so the funding window must start by day 21 after that payment; if it cannot, pro-rated
+thresholds are agreed with SCF in writing by day 21.
 
 **Floor** (all three over the escrows so counted; the floor is the payment condition):
 
@@ -46,10 +46,10 @@ measured buyer-confirmation behaviour; it was one half before 29 Oct 2026.
 **Target** (reported, not a condition): EUR 7,000 from 35 escrows, at least 20 distinct buyer
 wallets and 6 distinct sellers. **Stretch** (reported, not a condition): EUR 15,000 from 70 escrows.
 
-Basis: the floor is sized on the current paid-order pace (the 1-15 October 2026 pace, about 8.6
-orders a day, so about 390 orders funded in a 45-day window), assuming that eligible orders run
-through the platform checkout, where EURC is offered; about 5% of them choosing EURC for the floor
-and 9% for the target; and, because silent-buyer resolutions count for at most two thirds, at
+Basis: the floor is sized on current volume (EUR 45,810 monthly order value, founder-reported 30 Oct 2026,
+so about EUR 68,700 of orders in a 45-day window), assuming that eligible orders run through the
+platform checkout, where EURC is offered; about 6% of that volume settling in EURC for the floor
+and about 10% for the target; and, because silent-buyer resolutions count for at most two thirds, at
 least 7 of the 20 counted escrows settled on the buyer's own approval. The Tranche 2 recalibration re-bases the floor
 on measured checkout volume, opt-in rate and buyer-approval rate: the pilot reports
 platform-checkout order volume, EURC opt-in among eligible orders and the buyer-approval rate, and
