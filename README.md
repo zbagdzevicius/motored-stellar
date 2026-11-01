@@ -37,6 +37,15 @@ reports new sponsored wallets, lists the mainnet platform, sponsor, guard and re
 and keeps reporting after payment #3 (not a payment condition); its hosting is funded by Motored,
 not billed.
 
+**For the SCF panel, in four lines.**
+
+- **Rate.** USD 105 per hour is a fully loaded senior-engineer cost in Vilnius, one rate for all work (engineering, verification and user testing); the pre-award code in this repository (99 Rust and 462 TypeScript tests, nine testnet runs) is not billed.
+- **Weeks.** The build ends in week 16; week 1 is the first Monday after payment #0. Weeks 17 to 24 are the Tranche 3 metric window only: no new build, and the live work inside it (the D12 responses, the D15 dashboard and the U5 interviews) is already counted in Tranche 3's 148 h, so nothing is added for those weeks.
+- **User testing.** Run by Žygimantas Bagdzevičius (co-founder and CTO), the engineer who built Motored's checkout, so findings go straight into fixes; its 30 h are separate from the 340 h of engineering. Irmantas Lukičiovas (co-founder and COO) recruits the sellers and buyers for the sessions, unpaid and outside the budget.
+- **D1 path.** One primary path: escrows created through Trustless Work's v1 API, so Trustless Work's own service creates and sees every escrow and every escrow pays its fee account. Deploying Trustless Work's same Wasm through its on-chain deployer is a disclosed contingency only, used if Trustless Work confirms the API cannot take a contract address in both roles (or has not answered within 10 working days of our dated request), and on mainnet only with its written consent.
+
+**Residual trust.** Motored's delivery oracle anchors the DPD delivery claims, and Motored holds the release key and the dispute-resolver key, so a buyer who stays silent relies on Motored's claim being true. That trust is bounded on-chain: every claim is public from the moment it is anchored and cannot pay the seller for 7 days, during which the buyer can see it and dispute (and, on the approval path, contest), and an offline revoker can withdraw a false batch; whatever Motored signs, the funds can leave the escrow only to that escrow's buyer or seller and the two fee recipients pinned per network (Trustless Work's fee account and Motored's platform address), at a capped fee rate, and never to the seller above the escrow amount. Shipping is paid outside the escrow and rests on Motored, as on cards. Who holds which key: [docs/trust-model.md](docs/trust-model.md).
+
 ## Why Stellar
 
 - **Circle issues EURC on Stellar.** Runs 8 and 9 below settled in Circle's own testnet EURC, not
@@ -122,6 +131,7 @@ tracking are part of deliverable D6. On a refund the platform tops up both fees,
   - [What guard v0.10 adds](#what-guard-v010-adds)
   - [Provenance](#provenance)
   - [Tests and CI](#tests-and-ci)
+  - [Reproduce the test counts](#reproduce-the-test-counts)
   - [Not yet done](#not-yet-done)
 - [Design decisions we made](#design-decisions-we-made)
 - [The order flow](#the-order-flow)
@@ -207,7 +217,8 @@ on the SCF #46 filing day.
 
 - **Now:** 99 Rust contract tests (guard 88, claim registry 11) and 462 TypeScript tests, counted
   locally on 29 Oct 2026 with guard v0.10, its platform fee cap and shipping paid outside the escrow
-  (`cargo test` and vitest across the eight workspaces).
+  (`cargo test` and vitest across the eight workspaces), and re-counted on 2 Nov 2026 with the
+  commands in [Reproduce the test counts](#reproduce-the-test-counts).
 - **CI:** the workflow runs on every push; CI on the v0.9 commits is green
   ([run 40855043032](https://github.com/zbagdzevicius/motored-stellar/actions/runs/40855043032),
   logged in [docs/verification.md](docs/verification.md)).
@@ -221,6 +232,36 @@ Before shipping moved out of the escrow the TypeScript count was 453; before the
 are logged in [docs/verification.md](docs/verification.md).
 
 </details>
+
+### Reproduce the test counts
+
+The counts are what these commands print; CI runs the same commands (`.github/workflows/ci.yml`,
+jobs `typescript` and `contracts`). Re-counted locally on 2 Nov 2026 at the current commit:
+99 Rust and 462 TypeScript.
+
+```bash
+# Rust: 99 = guard 88 + claim registry 11 (contracts/Cargo.toml workspace).
+# The guard tests import the built Wasm and Trustless Work's deployed Wasm, so build first.
+cd contracts
+TW_MAINNET_RPC_URL=https://mainnet.sorobanrpc.com ./third_party/tw-wasm/fetch.sh  # checked against SHA256SUMS
+stellar contract build                                   # Stellar CLI 23.4.0, as in CI
+cargo test --locked -- --list 2>/dev/null | grep -c ': test$'   # 99, listed without running
+cargo test --locked -- --test-threads=1                  # runs them: 11 + 88 passed
+cd ..
+
+# TypeScript: 462 across the eight npm workspaces (Node >= 22.12).
+npm ci
+npm test --workspaces --if-present 2>&1 | grep -E 'Tests +[0-9]+ passed' | awk '{s+=$2} END {print s}'
+# per workspace: claims 42, escrow 97, eurc 68, ramps 56, reconciler 60, wallets 61, scripts 69, example 9
+```
+
+Two things that make a count look different:
+
+- Most guard tests are generated by the `lineage!` macro in `contracts/guard/src/test.rs`, once for
+  Trustless Work's testnet Wasm (`7c3f7b2a...`) and once for its mainnet Wasm (`96d51751...`), so
+  counting `#[test]` in the source gives far fewer than the 88 that run; `--list` prints each one.
+- Count TypeScript tests from the `vitest run` summary above, not from `vitest list`: `vitest list`
+  does not collect some suites here (it reports none in `packages/wallets`).
 
 ### Not yet done
 
@@ -376,7 +417,7 @@ artefact (CI tests of the rules it imports, or testnet tx hashes mapped to order
 
 | ID | Scope | In this repository | Pre-award (not billed) | Billed remaining work |
 |---|---|---|---|---|
-| D1 | Trustless Work escrow in EURC on testnet, guard in both roles | [`packages/escrow`](packages/escrow), [`scripts/testnet`](scripts/testnet) | REST client in [`packages/escrow/src/tw-rest.ts`](packages/escrow/src/tw-rest.ts), drafted against Trustless Work's OpenAPI schema; request and response shapes are verified against the live v1 API in D1 (each open shape is marked `TODO(verify, D1 live API run)`); deployer path, lifecycle, precheck, event reader, release service; deployer path ran on testnet (run 4), and with Circle's testnet EURC (run 8) | Live v1 REST API runs (or the on-chain deployer, if Trustless Work confirms the API does not take a contract address in both roles, or has not answered within 10 working days of our dated written request, linked in the run log); Circle testnet EURC |
+| D1 | Trustless Work escrow in EURC on testnet, guard in both roles | [`packages/escrow`](packages/escrow), [`scripts/testnet`](scripts/testnet) | REST client in [`packages/escrow/src/tw-rest.ts`](packages/escrow/src/tw-rest.ts), drafted against Trustless Work's OpenAPI schema; request and response shapes are verified against the live v1 API in D1 (each open shape is marked `TODO(verify, D1 live API run)`); deployer path, lifecycle, precheck, event reader, release service; deployer path ran on testnet (run 4), and with Circle's testnet EURC (run 8) | Primary path: live v1 REST API runs, so Trustless Work's service creates every escrow (contingency only: the on-chain deployer, if Trustless Work confirms the API does not take a contract address in both roles, or has not answered within 10 working days of our dated written request, linked in the run log); Circle testnet EURC |
 | D2 | Wallets, sponsored accounts, EURC trustlines, fee-bumps | [`packages/wallets`](packages/wallets), [`packages/eurc`](packages/eurc) | Privy and Wallets Kit adapters, CAP-33 sponsorship, fee-bump policy; tx shapes lab-proven ([proofs](docs/testnet-proofs.md#sponsored-accounts-and-fee-bumps-wallet-lab-24-oct-2026)) | Privy on our sign-in, the sponsor service in our backend, the review screen in our checkout; browser runs with real wallets; Circle testnet EURC; measured fee caps (testnet key storage is Motored-funded, not billed) |
 | D3 | Disputes and refunds on the escrow (escrow order states, payout records, eligibility rules, the escrow ledger, seller checks and escrow emails are funded by Motored, not billed) | Rules only: [`packages/escrow/src/fees.ts`](packages/escrow/src/fees.ts); `OrderSource`, `DeliveryOracle`, `LedgerSource` ports | Fee, cap, rounding and refund rules with tests | Dispute and refund mapping in `packages/escrow`, with public CI tests; marketplace screens stay private |
 | D4 | Checkout on the EURC rail, end-to-end test, optional Stellar Broker swap | [`examples/order-flow`](examples/order-flow), [`scripts/testnet/e2e.ts`](scripts/testnet/e2e.ts), [`scripts/testnet/e2e-claims.ts`](scripts/testnet/e2e-claims.ts) | In-memory flow and the scripted testnet run | Private checkout UI; end-to-end run log appended to testnet-proofs.md; Stellar Broker (SCF Integration List, 1-5 days): Broker API and swap tests 11 h (USD 1,155), billed inside D4's 27 h (USD 2,835). The buyer's own wallet signs, Broker builds and submits, EURC lands in the buyer's wallet, then a separate `fund_escrow`; slippage cap, 10 s quotes, funding from the final amount bought. Broker has no testnet, so the proof is a Motored-funded mainnet swap linked by order reference to the testnet escrow, plus CI stub tests (slippage refusal, stale quote, partial finish, inflated fee op); no customer mainnet swaps before the legal opinion. Sanctions screening is Motored-funded, not billed |
@@ -391,7 +432,7 @@ artefact (CI tests of the rules it imports, or testnet tx hashes mapped to order
 | D13 | Open-source release (the read-only mainnet canary is Motored-run, not billed) | This repository, [`docs/integration-guide.md`](docs/integration-guide.md) | Draft testnet integration guide | The guide updated for mainnet and checked by a clean-clone run; first tagged release |
 | D14 | Public tracking dashboard on testnet (escrows, EURC funded and released, buyer wallets, sellers, buyer-approved versus silent releases, every tx linked to stellar.expert) | [`scripts/metric`](scripts/metric), [`docs/metric.md`](docs/metric.md); the page lands here | Metric script with unit tests | Billed (Tranche 1): a read-only page over the registered testnet footprint whose figures equal `scripts/metric` |
 | D15 | Public tracking dashboard on mainnet, with progress to the Tranche 3 floor | Same as D14 | None | Billed (Tranche 3): the page on the registered mainnet footprint, checked against `scripts/metric` and the weekly signed snapshots; hosting funded by Motored, not billed |
-| U1-U5 | User testing (pilots, LT and EN copy, onboarding validation of the explainer video and help pages, interviews) | Not code | None | Billed in Tranches 2-3 |
+| U1-U5 | User testing (pilots, LT and EN copy, onboarding validation of the explainer video and help pages, interviews), run by Žygimantas; Irmantas recruits the participants, outside the budget | Not code | None | Billed in Tranches 2-3 |
 
 ### Status of each part
 
