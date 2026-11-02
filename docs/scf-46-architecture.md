@@ -71,13 +71,17 @@ Mainnet also waits for updated terms published at least 15 days earlier.
 
 **At a glance (the one page for the panel).**
 
+**The problem.** Buyers abroad and Lithuanian scrapyards rarely know each other, and a card hold shows neither side where the money is. A public EURC escrow on Stellar does, at EUR 0.15 per order against EUR 1.00 by card.
+
 - **What.** EURC checkout for Motored, a live used car parts marketplace: each order's Circle EURC waits in one Trustless Work escrow, and our guard contract holds the escrow's release and dispute-resolver roles. Cards stay on every order. Testnet only today.
 - **Partners (SCF Integration List).** Trustless Work (escrow), Privy and Stellar Wallets Kit (wallets), Bridge (SEPA in and out), Stellar Broker (optional swap to EURC); Circle EURC is the asset.
 - **Budget.** USD 38,850 = 370 h at USD 105/h: engineering and verification 340 h (USD 35,700), user testing 30 h (USD 3,150). Tranches 111 / 111 / 148 h = USD 11,655 / 11,655 / 15,540 ([section 10](#10-build-plan-and-effort-matches-the-submission-budget)).
 - **Rate.** USD 105 per hour is a market rate for principal- and lead-level engineering in Vilnius, one rate for all work (engineering, verification and user testing); the pre-award code in this repository (99 Rust and 462 TypeScript tests, nine testnet runs) is not billed.
 - **Weeks.** The build ends in week 16; week 1 is the first Monday after payment #0. Weeks 17 to 24 are the Tranche 3 metric window only: no new build, and the live work inside it (the D12 responses, the D15 dashboard and the U5 interviews) is already counted in Tranche 3's 148 h, so nothing is added for those weeks.
-- **Who.** The two engineers who built the live marketplace. User testing is run by Žygimantas Bagdzevičius (co-founder, CEO and CTO; principal engineer, ex-Amazon), who built Motored's checkout, so findings go straight into fixes; its 30 h are separate from the 340 h of engineering. Irmantas Lukičiovas (co-founder and COO) recruits the sellers and buyers for the sessions, unpaid and outside the budget.
-- **Metric (payment #3).** At least EUR 4,000 released on mainnet from at least 20 escrows, 12 buyer wallets and 4 sellers, silent-buyer resolutions at most two thirds; target EUR 7,000 from 35 escrows. Rebuilt from chain data by `scripts/metric` ([metric.md](metric.md)).
+- **Who.** The two engineers who built the live marketplace. Žygimantas owns D1, D3, D6, D7, D10, D12, D13, D15 and U1-U5; Ernestas owns D2, D4, D5, D8, D11 and D14. By person: Žygimantas 227 h (197 h engineering + 30 h user testing, about 14 h a week), Ernestas 143 h (about 9 h a week), over 16 build weeks; 197 + 143 = 340 h engineering, + 30 h user testing = 370 h. User testing is run by Žygimantas Bagdzevičius (co-founder, CEO and CTO; principal engineer, ex-Amazon), who built Motored's checkout, so findings go straight into fixes; its 30 h are separate from the 340 h of engineering. Irmantas Lukičiovas (co-founder and COO) recruits the sellers and buyers for the sessions, unpaid and outside the budget.
+- **Metric (payment #3).** At least EUR 4,000 released on mainnet from at least 20 escrows (at least 7 buyer-approved), 12 buyer wallets and 4 sellers, silent-buyer resolutions at most two thirds; target EUR 7,000 from 35 escrows, in 45 days. Then the rail stays live as a standard checkout option for every eligible order. Rebuilt from chain data by `scripts/metric` ([metric.md](metric.md)).
+- **First.** A first among the SCF awards we checked (rounds #41-#45): a Trustless Work escrow integration settled in EURC. The Trustless Work integrations awarded there settle in USDC.
+- **Community.** A testable version shared in the Stellar Developers Discord in Tranche 2 (D8); the open-source release announced there in Tranche 3 (D13).
 - **D1 path.** One primary path: escrows created through Trustless Work's v1 API, so Trustless Work's own service creates and sees every escrow and every escrow pays its fee account. Deploying Trustless Work's same Wasm through its on-chain deployer is a disclosed contingency only, used if Trustless Work confirms the API cannot take a contract address in both roles (or has not answered within 10 working days of our dated request), and on mainnet only with its written consent.
 - **Residual trust.** Motored's delivery oracle anchors the DPD delivery claims, and Motored holds the release key and the dispute-resolver key, so a buyer who stays silent relies on Motored's claim being true. That trust is bounded on-chain: every claim is public from the moment it is anchored and cannot pay the seller for 7 days, during which the buyer can see it and dispute (and, on the approval path, contest), and an offline revoker can withdraw a false batch; whatever Motored signs, the funds can leave the escrow only to that escrow's buyer or seller and the two fee recipients pinned per network (Trustless Work's fee account and Motored's platform address), at a capped fee rate, and never to the seller above the escrow amount. Shipping is paid outside the escrow and rests on Motored, as on cards. Keys and limits: [trust-model.md](trust-model.md).
 - **Proof.** Nine testnet runs with hashes ([section 1](#1-status-at-a-glance), [testnet-proofs.md](testnet-proofs.md)); 99 Rust and 462 TypeScript tests, reproducible with [these commands](../README.md#reproduce-the-test-counts).
@@ -97,6 +101,14 @@ Seller (EURC, or bank via Bridge) + Motored platform fee + Trustless Work 0.3%
    | delivery claims (Merkle roots of DPD "Delivered" events, hourly)
 Claim registry (write-once roots, anchor time, offline revoker)
 ```
+
+**Attacks and how they are blocked** (D7; IDs from the STRIDE table in [threat-model.md](threat-model.md)):
+
+- **Stolen release key** -> Trustless Work still needs the buyer's approval, and release pays only the fixed seller (S1).
+- **Payout to a third address** -> the guard pays only the buyer or seller, never above the escrow amount (S2, T6).
+- **False delivery claim** -> public on-chain, pays only after 7 days, the buyer can dispute it in that window, and an offline revoker cancels a forged batch (S3, R1).
+- **Inflated platform fee** -> the guard never registers an escrow above the 10% cap (T3b, E3).
+- **Double payout or refund** -> tx hashes checked before any re-send, a second seller payout refused on-chain, CI tests on double refunds (D8, T6).
 
 **Three guard rules.**
 
@@ -744,33 +756,34 @@ The signature covers Soroban's authorisation payload (network, nonce, invocation
 - **Billing rule.** Every billed line calls a partner API or contract, or reads or writes a named Stellar object (escrow contract ID, funding and release events, release tx hash, fee in basis points, EURC transfers, delivery-claim anchors), and is checked by tx hashes.
 - **Not billed.** Pre-award work (the code in this repository at filing, the testnet lab runs and runs 4 to 9) is not billed.
 
-| ID | Deliverable (billed remaining work only) | Integration served | Tranche | Hours | USD |
-|---|---|---|---|---|---|
-| D1 | Primary path: Trustless Work v1 REST API in Circle testnet EURC, so Trustless Work's service creates every escrow (contingency only: its on-chain deployer, if Trustless Work confirms in writing that the API does not take a contract address in both roles, or has not answered within 10 working days of our dated written request, linked in the run log); release/resolve submission path with the guard in both roles; escrow service in the order service + event polling | Trustless Work | T1 (wk 1-5) | 38 | 3,990 |
-| D2 | Privy + Stellar Wallets Kit live, the sponsor service and review screen wired into our backend and checkout, wallet testing on real devices; sponsored accounts, EURC trustlines and fee-bumps with Circle testnet EURC; testnet key storage (Secret Manager) funded by Motored, not billed | Privy; Stellar Wallets Kit; wallets holding EURC | T1 | 27 | 2,835 |
-| D3 | Disputes and refunds on the escrow with top-up; funded by Motored, not billed: escrow order states, payouts settled by the release, eligibility rules, escrow ledger, seller-check gate, escrow notifications and emails | Trustless Work / EURC in Motored's order system | T1 | 14 | 1,470 |
-| D4 | Checkout EURC option + Playwright end-to-end test on testnet; optional Stellar Broker swap of USDC or XLM to EURC in the buyer's own wallet (Broker API and swap tests 11 h, USD 1,155, inside D4); order-page escrow status and sanctions screening funded by Motored, not billed | Trustless Work / EURC in checkout, with Privy, Wallets Kit and Stellar Broker | T1 | 27 | 2,835 |
-| D14 | Public tracking dashboard on testnet: read-only page over the registered footprint, rebuilt from chain data with `scripts/metric` | The on-chain metric (all five partners) | T1 | 5 | 525 |
-| | **T1 subtotal** (no allowance) | | | **111** | **11,655** |
-| D5 | Bridge on/off-ramp in sandbox (buyer KYC, Travel Rule data, memo off-ramp); seller KYC/KYB status in onboarding funded by Motored, not billed | Bridge | T2 (wk 6-10) | 27 | 2,835 |
-| D6 | Guard and registry production hardening: the six remaining refused paths as landed failed txs (four landed pre-award in runs 6 and 8, not billed), key-rotation and migration drill, delivery claims from live DPD tracking, registry `Anchored` event, verified Wasm; TTL upkeep landed pre-award in guard v0.9 (run 7), sized for mainnet in v0.10, and the guard-side platform fee cap landed pre-award in v0.10 (run 9), not billed | Trustless Work (release signer, resolver, release path) | T2 | 38 | 3,990 |
-| D7 | Threat model extended to the integrated system, with its 14-alert monitoring plan; the alert policies and the 15-minute escrow-to-order reconciliation task run by Motored, not billed | All five partners | T2 | 11 | 1,155 |
-| D8 | Testnet hardening, 7 named failure states with the pilots' findings on them; the testnet regression suite in CI and UI fixes in Motored's own screens funded by Motored, not billed | All five partners | T2 | 24 | 2,520 |
-| D9 | Admin escrow operations console: funded by Motored, not billed | Motored's own budget | T2 | 0 | 0 |
-| U1 | User testing: testnet pilot sessions run by Žygimantas (Irmantas recruits, outside the budget) | User-testing allowance | T2 | 9 | 945 |
-| U2 | User testing: LT and EN copy, tested in the U1 sessions | User-testing allowance | T2 | 2 | 210 |
-| | **T2 subtotal** (engineering 100 h, 10,500 + allowance 11 h, 1,155) | | | **111** | **11,655** |
-| D10 | Mainnet cutover, with Motored's own mainnet keys on a non-exportable signer | All five partners | T3 (build wk 11-16; metric window closes by wk 24) | 38 | 3,990 |
-| D11 | Seller EURC payouts, payout records carrying the release tx (11 h, USD 1,155); refunds after release, consumer withdrawal, freezes (22 h, USD 2,310); invoices and DAC7 records funded by Motored, not billed | Trustless Work / EURC in Motored's order system; Bridge off-ramp | T3 | 33 | 3,465 |
-| D12 | Live rollout and seven mainnet failure states; guard and Trustless Work error mapping from U5, indexer, reconciler, daily report and metric in production and LT/EN error screens run by Motored, not billed | All five partners | T3 | 21 | 2,205 |
-| D13 | SCF-required open-source release + integration guide; the read-only mainnet canary run by Motored, not billed | All five partners | T3 | 27 | 2,835 |
-| D15 | Public tracking dashboard on the mainnet footprint, with progress to the payment #3 floor; figures checked against `scripts/metric` and the weekly signed snapshots | The on-chain metric (all five partners) | T3 | 10 | 1,050 |
-| U3 | Onboarding validation: explainer video, LT/EN, tested with U5 interviewees for comprehension and revised after the findings | User-testing allowance | T3 | 5 | 525 |
-| U4 | Onboarding validation: help pages and EURC landing page, LT/EN, tested and revised the same way | User-testing allowance | T3 | 4 | 420 |
-| U5 | User testing: mainnet interviews: 5+ moderated interviews run by Žygimantas, synthesis (recruiting by Irmantas and CRM tagging are Motored-funded) | User-testing allowance | T3 | 10 | 1,050 |
-| | **T3 subtotal** (engineering 129 h, 13,545 + allowance 19 h, 1,995) | | | **148** | **15,540** |
-| | **Total** (engineering and verification 340 h, 35,700 + allowance 30 h, 3,150) | | | **370** | **38,850** |
+| ID | Owner | Deliverable (billed remaining work only) | Integration served | Tranche | Hours | USD |
+|---|---|---|---|---|---|---|
+| D1 | Žygimantas | Primary path: Trustless Work v1 REST API in Circle testnet EURC, so Trustless Work's service creates every escrow (contingency only: its on-chain deployer, if Trustless Work confirms in writing that the API does not take a contract address in both roles, or has not answered within 10 working days of our dated written request, linked in the run log); release/resolve submission path with the guard in both roles; escrow service in the order service + event polling | Trustless Work | T1 (wk 1-5) | 38 | 3,990 |
+| D2 | Ernestas | Privy + Stellar Wallets Kit live, the sponsor service and review screen wired into our backend and checkout, wallet testing on real devices; sponsored accounts, EURC trustlines and fee-bumps with Circle testnet EURC; testnet key storage (Secret Manager) funded by Motored, not billed | Privy; Stellar Wallets Kit; wallets holding EURC | T1 | 27 | 2,835 |
+| D3 | Žygimantas | Disputes and refunds on the escrow with top-up; funded by Motored, not billed: escrow order states, payouts settled by the release, eligibility rules, escrow ledger, seller-check gate, escrow notifications and emails | Trustless Work / EURC in Motored's order system | T1 | 14 | 1,470 |
+| D4 | Ernestas | Checkout EURC option + Playwright end-to-end test on testnet; optional Stellar Broker swap of USDC or XLM to EURC in the buyer's own wallet (Broker API and swap tests 11 h, USD 1,155, inside D4); order-page escrow status and sanctions screening funded by Motored, not billed | Trustless Work / EURC in checkout, with Privy, Wallets Kit and Stellar Broker | T1 | 27 | 2,835 |
+| D14 | Ernestas | Public tracking dashboard on testnet: read-only page over the registered footprint, rebuilt from chain data with `scripts/metric` | The on-chain metric (all five partners) | T1 | 5 | 525 |
+| | | **T1 subtotal** (no allowance) | | | **111** | **11,655** |
+| D5 | Ernestas | Bridge on/off-ramp in sandbox (buyer KYC, Travel Rule data, memo off-ramp); seller KYC/KYB status in onboarding funded by Motored, not billed | Bridge | T2 (wk 6-10) | 27 | 2,835 |
+| D6 | Žygimantas | Guard and registry production hardening: the six remaining refused paths as landed failed txs (four landed pre-award in runs 6 and 8, not billed), key-rotation and migration drill, delivery claims from live DPD tracking, registry `Anchored` event, verified Wasm; TTL upkeep landed pre-award in guard v0.9 (run 7), sized for mainnet in v0.10, and the guard-side platform fee cap landed pre-award in v0.10 (run 9), not billed | Trustless Work (release signer, resolver, release path) | T2 | 38 | 3,990 |
+| D7 | Žygimantas | Threat model extended to the integrated system, with its 14-alert monitoring plan; the alert policies and the 15-minute escrow-to-order reconciliation task run by Motored, not billed | All five partners | T2 | 11 | 1,155 |
+| D8 | Ernestas | Testnet hardening, 7 named failure states with the pilots' findings on them; the testnet regression suite in CI and UI fixes in Motored's own screens funded by Motored, not billed | All five partners | T2 | 24 | 2,520 |
+| D9 | - | Admin escrow operations console: funded by Motored, not billed | Motored's own budget | T2 | 0 | 0 |
+| U1 | Žygimantas | User testing: testnet pilot sessions run by Žygimantas (Irmantas recruits, outside the budget) | User-testing allowance | T2 | 9 | 945 |
+| U2 | Žygimantas | User testing: LT and EN copy, tested in the U1 sessions | User-testing allowance | T2 | 2 | 210 |
+| | | **T2 subtotal** (engineering 100 h, 10,500 + allowance 11 h, 1,155) | | | **111** | **11,655** |
+| D10 | Žygimantas | Mainnet cutover, with Motored's own mainnet keys on a non-exportable signer | All five partners | T3 (build wk 11-16; metric window closes by wk 24) | 38 | 3,990 |
+| D11 | Ernestas | Seller EURC payouts, payout records carrying the release tx (11 h, USD 1,155); refunds after release, consumer withdrawal, freezes (22 h, USD 2,310); invoices and DAC7 records funded by Motored, not billed | Trustless Work / EURC in Motored's order system; Bridge off-ramp | T3 | 33 | 3,465 |
+| D12 | Žygimantas | Live rollout and seven mainnet failure states; guard and Trustless Work error mapping from U5, indexer, reconciler, daily report and metric in production and LT/EN error screens run by Motored, not billed | All five partners | T3 | 21 | 2,205 |
+| D13 | Žygimantas | SCF-required open-source release + integration guide; the read-only mainnet canary run by Motored, not billed | All five partners | T3 | 27 | 2,835 |
+| D15 | Žygimantas | Public tracking dashboard on the mainnet footprint, with progress to the payment #3 floor; figures checked against `scripts/metric` and the weekly signed snapshots | The on-chain metric (all five partners) | T3 | 10 | 1,050 |
+| U3 | Žygimantas | Onboarding validation: explainer video, LT/EN, tested with U5 interviewees for comprehension and revised after the findings | User-testing allowance | T3 | 5 | 525 |
+| U4 | Žygimantas | Onboarding validation: help pages and EURC landing page, LT/EN, tested and revised the same way | User-testing allowance | T3 | 4 | 420 |
+| U5 | Žygimantas | User testing: mainnet interviews: 5+ moderated interviews run by Žygimantas, synthesis (recruiting by Irmantas and CRM tagging are Motored-funded) | User-testing allowance | T3 | 10 | 1,050 |
+| | | **T3 subtotal** (engineering 129 h, 13,545 + allowance 19 h, 1,995) | | | **148** | **15,540** |
+| | | **Total** (engineering and verification 340 h, 35,700 + allowance 30 h, 3,150) | | | **370** | **38,850** |
 
+**By person.** Žygimantas 227 h (197 h engineering + 30 h user testing, about 14 h a week), Ernestas 143 h (about 9 h a week), over 16 build weeks; 197 + 143 = 340 h engineering, + 30 h user testing = 370 h. Žygimantas owns D1, D3, D6, D7, D10, D12, D13, D15 and U1-U5; Ernestas owns D2, D4, D5, D8, D11 and D14.
 
 **Work to be done, in hours** (USD 105 per hour; D9 is Motored-funded and not billed).
 
@@ -838,11 +851,11 @@ No further trim is offered: the lines a panel could cut first (the D9 console, t
 - D3, `packages/escrow` dispute and refund mapping, with the public CI tests for fee and cap boundaries and a wrong top-up;
 - D4, `scripts/testnet/e2e.ts` and `examples/order-flow` on the checkout's `fund_escrow` path;
 - D7, `docs/threat-model.md` with the 14-alert monitoring plan (the `packages/reconciler` extension and its one-cent-gap CI test are Motored-funded, not billed);
-- D8, a public CI test per failure state in `packages/escrow`, `eurc`, `wallets` and `ramps` (the testnet regression suite is Motored-funded, not billed);
+- D8, a public CI test per failure state in `packages/escrow`, `eurc`, `wallets` and `ramps` (the testnet regression suite is Motored-funded, not billed), and a testable version shared in the Stellar Developers Discord;
 - D10, the mainnet record in `docs/testnet-proofs.md`;
 - D11, the off-ramp in `packages/ramps` and the post-release refund rules in `packages/escrow`;
 - D12, `scripts/metric` output on the weekly signed snapshots and a test per mainnet failure state (`packages/reconciler` in production and the daily report are Motored-funded, not billed);
-- D13, the tagged release and integration guide (the canary is Motored-run);
+- D13, the tagged release and integration guide, announced in the Stellar Developers Discord (the canary is Motored-run);
 - D14 and D15, the public dashboard page, whose figures equal `scripts/metric` run on the same footprint (hosting is Motored-funded).
 
 Only Motored's own checkout UI, admin screens and marketplace code stay private; they are verified by a recorded end-to-end run and a redacted record.
