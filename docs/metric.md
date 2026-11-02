@@ -1,12 +1,14 @@
 # On-chain release metric (Tranche 3)
 
 The metric is defined on public chain data only, and [`scripts/metric`](../scripts/metric)
-recomputes it. Today the script reads events from Stellar RPC, which keeps them for a limited
-window only (days, not the whole metric period), so a full recompute needs a public archive of
-older events: SDF's Hubble dataset (Stellar history on BigQuery) holds them, but the script has no
-adapter for it yet. Until it does, from the first mainnet escrow the platform will publish weekly signed snapshots of the
-footprint's events, each taken while RPC still holds those ledgers, so anyone can check each
-snapshot against RPC that week and then feed the snapshots to the script with `--observations`.
+recomputes it. The script reads events from Stellar RPC, which keeps them for a limited window
+only (days, not the whole metric period). So from the first mainnet escrow the platform publishes
+weekly signed snapshots of the footprint's events, each taken while RPC still holds those ledgers
+and each event linked to stellar.expert, so anyone can check each snapshot against RPC that week
+and then feed the snapshots to the script with `--observations`. The snapshots are the recompute
+path for the payment #3 metric and for the D15 dashboard. SDF's Hubble dataset (Stellar history on
+BigQuery) also holds the older events; an adapter for it is not a deliverable and not needed for
+the metric.
 
 ## Definition
 
@@ -67,8 +69,8 @@ The number of new EURC-holding accounts the sponsor account sponsored is reporte
 
 ## Footprint
 
-Registered up front and published in this repository. The mainnet platform fee address and sponsor
-account are created before the award, and the mainnet guard and registry contract IDs are fixed in
+Registered up front and published in this repository (table "Mainnet footprint values" below). The
+mainnet platform fee address and sponsor account are created before the award, and the mainnet guard and registry contract IDs are fixed in
 advance from the deployer account and a published salt (a Soroban contract ID depends only on the
 network, the deployer and the salt), so all four can be registered at award time. A replacement
 guard joins the footprint only with SCF's written acknowledgement.
@@ -82,6 +84,20 @@ guard joins the footprint only with SCF's written acknowledgement.
 | Sponsored accounts | Listed as created |
 | EURC asset | The measured asset |
 | Escrow contract IDs | Added as created |
+
+### Mainnet footprint values
+
+Not yet published (2 Nov 2026). Filled in and committed before the award, so SCF can register the
+footprint at award time; mainnet use waits for the gates in the submission's Tranche 3.
+
+| Item | Value |
+|---|---|
+| Platform fee address (G...) | to be published before the award |
+| Sponsor account (G...) | to be published before the award |
+| Deployer account (G...) | to be published before the award |
+| Guard salt (32 bytes, hex) and derived contract ID | to be published before the award |
+| Claim registry salt (32 bytes, hex) and derived contract ID | to be published before the award |
+| EURC asset | `EURC:GDHU6WRG4IEQXM5NZ4BMPKOXHW76MZM4Y2IEMFDVXBSDP6SJY4ITNPP2` (Circle, mainnet) |
 
 ## How the script computes it
 
@@ -105,9 +121,10 @@ guard joins the footprint only with SCF's written acknowledgement.
 5. Classify a resolution as silent-buyer when the guard authorised it on the claim path
    (`ResolveSeller`).
 
-RPC keeps events for a limited window only, so a full recompute reads from an archive (SDF's Hubble
-dataset, once an adapter exists) or from the weekly signed snapshots the platform will publish from the first mainnet escrow (at Motored's own cost, not billed to SCF); the
-script takes an `EventSource` port for that reason. The RPC collector refuses a start ledger older
+RPC keeps events for a limited window only, so a full recompute reads from the weekly signed
+snapshots the platform publishes from the first mainnet escrow (at Motored's own cost, not billed to
+SCF); the script takes an `EventSource` port for that reason (an archive source such as SDF's Hubble
+dataset could be added later, outside the award). The RPC collector refuses a start ledger older
 than the RPC's oldest ledger rather than silently undercounting.
 
 ## Real output on testnet (runs 4 to 7, 29 Oct 2026)

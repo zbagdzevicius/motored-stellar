@@ -27,7 +27,7 @@
 //! rotate their signers at the account level; a compromised account is handled by a new registry
 //! (and a new guard pointing at it) for new escrows.
 //!
-//! **Status: unaudited. Testnet only.**
+//! **Status: not yet audited. Testnet only.**
 #![no_std]
 use soroban_sdk::{
     contract, contracterror, contractevent, contractimpl, contracttype, Address, Bytes, BytesN,

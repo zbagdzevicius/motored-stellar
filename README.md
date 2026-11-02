@@ -87,7 +87,7 @@ Circle's published testnet address), from this repository's own scripts. 2 EURC 
 | Circle testnet EURC (Stellar Asset Contract) | [`CCUUDM43...R4MCGZ`](https://stellar.expert/explorer/testnet/contract/CCUUDM434BMZMYWYDITHFXHDMIVTGGD6T2I5UKNX5BSLXLW7HVR4MCGZ) |
 | Escrow code | Trustless Work's own deployed testnet Wasm `7c3f7b2a`, unmodified |
 | Earlier runs | Runs 4 to 8: release, dispute refund, break-glass refund, silent-buyer payout against a depth-32 delivery claim, buyer contest, four refusals landed as failed transactions ([table below](#testnet-runs)) |
-| CI (last logged green run) | All four jobs green on 2 Nov 2026, 99 Rust and 462 TypeScript tests ([run 41504889093](https://github.com/zbagdzevicius/motored-stellar/actions/runs/41504889093), logged in [docs/verification.md](docs/verification.md)); the badge above shows the latest push |
+| CI (last logged green run) | All four jobs green on 2 Nov 2026, 99 Rust and 462 TypeScript tests ([run 41505458624](https://github.com/zbagdzevicius/motored-stellar/actions/runs/41505458624), logged in [docs/verification.md](docs/verification.md)); the badge above shows the latest push |
 | Tests | 99 Rust contract tests (guard 88, claim registry 11) and 462 TypeScript tests, counted locally on 29 Oct 2026 and in CI on 2 Nov 2026 |
 
 Every transaction of run 9 is in
@@ -233,7 +233,7 @@ on the SCF #46 filing day.
   (`cargo test` and vitest across the eight workspaces), and re-counted on 2 Nov 2026 with the
   commands in [Reproduce the test counts](#reproduce-the-test-counts).
 - **CI:** the workflow runs on every push; CI is green with 99 Rust and 462 TypeScript tests
-  ([run 41504889093](https://github.com/zbagdzevicius/motored-stellar/actions/runs/41504889093), 2 Nov 2026,
+  ([run 41505458624](https://github.com/zbagdzevicius/motored-stellar/actions/runs/41505458624), 2 Nov 2026,
   logged in [docs/verification.md](docs/verification.md)).
 
 <details>

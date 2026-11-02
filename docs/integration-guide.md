@@ -199,8 +199,8 @@ needed), then the buyer-signed `contest`, then `dispute_escrow`, as separate tra
   signs a challenge) to each virtual account and liquidation address.
 
 Bridge docs: https://apidocs.bridge.xyz (virtual accounts, liquidation addresses, KYC links,
-sandbox). TODO(verify, D5): confirm Bridge supports EUR/SEPA with EURC on Stellar for your entity before
-you build on it; availability is per customer.
+sandbox). Open question (asked of Bridge in writing, November 2026): EUR/SEPA with EURC on Stellar for our entity;
+availability is per customer, so confirm it for yours before you build on it. Fallback: architecture section 11 (open partner confirmations).
 
 Code: [`packages/ramps`](../packages/ramps).
 

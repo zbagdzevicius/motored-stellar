@@ -2,7 +2,7 @@
 
 ## Status
 
-This repository is **testnet only** and **unaudited**. The guard contract and the claim
+This repository is **testnet only** and **not yet audited**. The guard contract and the claim
 registry have unit tests that run against the escrow Wasm files Trustless Work has deployed,
 and a testnet proof run (see [docs/verification.md](docs/verification.md)), but no external
 audit yet. An external review is planned before any mainnet deployment. Until then, any

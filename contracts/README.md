@@ -12,7 +12,7 @@ target `wasm32v1-none`).
 
 A tagged release of this workspace is part of D13.
 
-**Status: v0.10 (v0.9 plus a seller payout no buyer leg can block, a cap on the escrow's platform fee rate, and mainnet-sized TTL upkeep in the guard and the registry), unaudited, testnet only. Deployed on testnet in run 9 (29 Oct 2026, Circle testnet EURC; [proofs](../docs/testnet-proofs.md#run-9-guard-v010-on-circle-testnet-eurc-29-oct-2026-1903-to-1910-utc)).**
+**Status: v0.10 (v0.9 plus a seller payout no buyer leg can block, a cap on the escrow's platform fee rate, and mainnet-sized TTL upkeep in the guard and the registry), not yet audited, testnet only. Deployed on testnet in run 9 (29 Oct 2026, Circle testnet EURC; [proofs](../docs/testnet-proofs.md#run-9-guard-v010-on-circle-testnet-eurc-29-oct-2026-1903-to-1910-utc)).**
 
 ## Build and test
 

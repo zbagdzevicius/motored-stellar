@@ -1,7 +1,7 @@
 # Contributing
 
 Thanks for looking. This repository is the open-source, chain-side part of an EURC escrow rail
-on Stellar. It is **testnet only** and **unaudited**; keep it that way in every change.
+on Stellar. It is **testnet only** and **not yet audited**; keep it that way in every change.
 
 ## Ground rules
 

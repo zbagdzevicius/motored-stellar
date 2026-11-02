@@ -33,7 +33,7 @@
 //! extension never reaches the ledger. The extension changes no rule: it runs on data the entry
 //! point already loaded and never alters a stored value.
 //!
-//! **Status: unaudited. Testnet only.** See `docs/threat-model.md` and `docs/trust-model.md`.
+//! **Status: not yet audited. Testnet only.** See `docs/threat-model.md` and `docs/trust-model.md`.
 #![no_std]
 use soroban_sdk::{
     auth::{Context, CustomAccountInterface},
