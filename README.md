@@ -87,8 +87,8 @@ Circle's published testnet address), from this repository's own scripts. 2 EURC 
 | Circle testnet EURC (Stellar Asset Contract) | [`CCUUDM43...R4MCGZ`](https://stellar.expert/explorer/testnet/contract/CCUUDM434BMZMYWYDITHFXHDMIVTGGD6T2I5UKNX5BSLXLW7HVR4MCGZ) |
 | Escrow code | Trustless Work's own deployed testnet Wasm `7c3f7b2a`, unmodified |
 | Earlier runs | Runs 4 to 8: release, dispute refund, break-glass refund, silent-buyer payout against a depth-32 delivery claim, buyer contest, four refusals landed as failed transactions ([table below](#testnet-runs)) |
-| CI (last logged green run) | All four jobs green on the v0.9 commits ([run 40855043032](https://github.com/zbagdzevicius/motored-stellar/actions/runs/40855043032), logged in [docs/verification.md](docs/verification.md)); the badge above shows the latest push |
-| Tests | 99 Rust contract tests (guard 88, claim registry 11) and 462 TypeScript tests, counted locally on 29 Oct 2026 |
+| CI (last logged green run) | All four jobs green on 2 Nov 2026, 99 Rust and 462 TypeScript tests ([run 41504889093](https://github.com/zbagdzevicius/motored-stellar/actions/runs/41504889093), logged in [docs/verification.md](docs/verification.md)); the badge above shows the latest push |
+| Tests | 99 Rust contract tests (guard 88, claim registry 11) and 462 TypeScript tests, counted locally on 29 Oct 2026 and in CI on 2 Nov 2026 |
 
 Every transaction of run 9 is in
 [docs/testnet-proofs.md, Run 9](docs/testnet-proofs.md#run-9-guard-v010-on-circle-testnet-eurc-29-oct-2026-1903-to-1910-utc).
@@ -232,16 +232,15 @@ on the SCF #46 filing day.
   locally on 29 Oct 2026 with guard v0.10, its platform fee cap and shipping paid outside the escrow
   (`cargo test` and vitest across the eight workspaces), and re-counted on 2 Nov 2026 with the
   commands in [Reproduce the test counts](#reproduce-the-test-counts).
-- **CI:** the workflow runs on every push; CI on the v0.9 commits is green
-  ([run 40855043032](https://github.com/zbagdzevicius/motored-stellar/actions/runs/40855043032),
+- **CI:** the workflow runs on every push; CI is green with 99 Rust and 462 TypeScript tests
+  ([run 41504889093](https://github.com/zbagdzevicius/motored-stellar/actions/runs/41504889093), 2 Nov 2026,
   logged in [docs/verification.md](docs/verification.md)).
 
 <details>
 <summary>Earlier test counts</summary>
 
 Before shipping moved out of the escrow the TypeScript count was 453; before the fee cap they were
-95 and 448; the v0.9 counts were 83 and 413. Earlier counts (382 and 388 locally, 76 and 393 in the
-[CI run before v0.9](https://github.com/zbagdzevicius/motored-stellar/actions/runs/40839759344))
+95 and 448; the v0.9 counts were 83 and 413. Earlier counts (382 and 388 locally, 76 and 393 in CI before v0.9)
 are logged in [docs/verification.md](docs/verification.md).
 
 </details>
