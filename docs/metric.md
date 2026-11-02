@@ -46,7 +46,7 @@ measured buyer-confirmation behaviour; it was one half before 29 Oct 2026.
 **Target** (reported, not a condition): EUR 7,000 from 35 escrows, at least 20 distinct buyer
 wallets and 6 distinct sellers. **Stretch** (reported, not a condition): EUR 15,000 from 70 escrows.
 
-Basis: the floor is sized on current volume (EUR 45,810 monthly order value, founder-reported 30 Oct 2026,
+Basis: the floor is sized on current volume (EUR 45,810 monthly order value on 30 Oct 2026,
 so about EUR 68,700 of orders in a 45-day window), assuming that eligible orders run through the
 platform checkout, where EURC is offered; about 6% of that volume settling in EURC for the floor
 and about 10% for the target; and, because silent-buyer resolutions count for at most two thirds, at
