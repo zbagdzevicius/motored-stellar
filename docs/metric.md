@@ -1,12 +1,18 @@
 # On-chain release metric (Tranche 3)
 
 The metric is defined on public chain data only, and [`scripts/metric`](../scripts/metric)
-recomputes it. The script reads events from Stellar RPC, which keeps them for a limited window
-only (days, not the whole metric period). So from the first mainnet escrow the platform publishes
-weekly signed snapshots of the footprint's events, each taken while RPC still holds those ledgers
-and each event linked to stellar.expert, so anyone can check each snapshot against RPC that week
-and then feed the snapshots to the script with `--observations`. The snapshots are the recompute
-path for the payment #3 metric and for the D15 dashboard. SDF's Hubble dataset (Stellar history on
+recomputes it. The script reads events from Stellar RPC, which keeps them for about 7 days only
+(SDF testnet RPC, `ledgerRetentionWindow` 120,960 ledgers), not the whole metric period. So D14
+adds a scheduled CI job (GitHub Actions on a cron, read-only RPC, no keys) that commits the
+footprint's `scripts/metric` observation exports (JSON written with `--save-observations`, read
+back with `--observations`) to this repository at least every 3 days, starting on testnet from D1,
+not only from the first mainnet escrow; every export is taken while RPC still holds those ledgers.
+The D14 and D15 dashboard reads those committed exports plus a live RPC tail since the last one.
+From the first mainnet escrow the platform also publishes weekly signed snapshots of the
+footprint's events, each event linked to stellar.expert, so anyone can check each snapshot against
+RPC that week and then feed the snapshots to the script with `--observations`. The committed
+exports and the signed snapshots are the recompute path for the payment #3 metric and for the D15
+dashboard. SDF's Hubble dataset (Stellar history on
 BigQuery) also holds the older events; an adapter for it is not a deliverable and not needed for
 the metric.
 
@@ -17,11 +23,16 @@ the metric.
 A release **counts** when an escrow is:
 
 1. released to the seller (`release_funds`), or
-2. resolved to the seller through the guard (`resolve_dispute` with the seller as a recipient).
+2. resolved to the seller through the guard (`resolve_dispute` with the seller as a recipient), or
+3. paid to the seller alone through `withdraw_remaining_funds` under the guard's seller rules
+   (v0.10): the escrow stays disputed, not resolved and not released, so the seller outflow itself
+   is the evidence. A `withdraw_remaining_funds` that pays only the buyer (excess, dust, the
+   buyer's share) never counts.
 
 **Volume** is the gross amount leaving the escrow towards the seller side: for a release,
 `escrow.amount` (seller net plus the Trustless Work fee plus the platform fee); for a resolution,
-the seller's share of the distribution map. Refunds to the buyer do not count. Shipping is outside
+the seller's share of the distribution map; for a seller-alone withdrawal, the whole outflow of
+that transaction (seller net plus both fees). Refunds to the buyer do not count. Shipping is outside
 the escrow amount: the buyer pays it to the platform address in the funding step (29 Oct 2026
 design), so it is never in the counted volume. The floor numbers below are unchanged.
 
@@ -116,12 +127,18 @@ footprint at award time; mainnet use waits for the gates in the submission's Tra
    ([`packages/escrow/test/fixtures`](../packages/escrow/test/fixtures)). Still open, as a
    scheduled D12 check on the live rollout: the topic count of SAC `transfer` events (4 since
    Protocol 23, asset last) on the history the indexer reads.
-4. Distinct buyers and sellers come from the guard registration (`Reg.buyer`, `Reg.seller`) of each
+4. Seller-alone withdrawals (guard v0.10): for an escrow that is disputed but neither resolved
+   nor released, every outflow transaction that pays the seller (receiver role) counts as a
+   resolution to the seller; outflow transactions that pay only the buyer are skipped. Run 9's
+   escrow W (`CCFF7GHT...6FRHRM`, seller paid 1.9 EURC past a buyer with no trustline) is replayed
+   in `scripts/test/metric.test.ts` and counts as one silent-buyer escrow.
+5. Distinct buyers and sellers come from the guard registration (`Reg.buyer`, `Reg.seller`) of each
    counted escrow.
-5. Classify a resolution as silent-buyer when the guard authorised it on the claim path
+6. Classify a resolution as silent-buyer when the guard authorised it on the claim path
    (`ResolveSeller`).
 
-RPC keeps events for a limited window only, so a full recompute reads from the weekly signed
+RPC keeps events for about 7 days only, so a full recompute reads from the observation exports
+D14's scheduled CI job commits at least every 3 days from D1 on testnet, and from the weekly signed
 snapshots the platform publishes from the first mainnet escrow (at Motored's own cost, not billed to
 SCF); the script takes an `EventSource` port for that reason (an archive source such as SDF's Hubble
 dataset could be added later, outside the award). The RPC collector refuses a start ledger older

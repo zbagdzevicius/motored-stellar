@@ -45,6 +45,7 @@ trustline and 1 unit of dust, and an over-cap `register_escrow` as a failed tran
 | 29 Oct 2026 | GitHub Actions, run 8 commit | All four jobs green; vitest 413 (adds the --asset, decimal-amount and faucet-drip tests in scripts). |
 | 29 Oct 2026 | GitHub Actions, v0.9 commits | All four jobs green (contracts, TypeScript on Node 22 and 24, secrets and lint). |
 | 2 Nov 2026 | GitHub Actions, main at a0f124d (tag `pre-award-filing`) | All four jobs green (contracts, TypeScript on Node 22 and 24, secrets and lint): `cargo test --locked` 99 passed (guard 88, claim registry 11); vitest 462 passed: https://github.com/zbagdzevicius/motored-stellar/actions/runs/41505458624 |
+| 4 Nov 2026 | Local (not CI), after the tag: final-proposal alignment | No contract change (`cargo test` not re-run: 99 stands). vitest: 465 passed across the eight workspaces (claims 42, escrow 98, eurc 68, ramps 56, reconciler 60, wallets 61, scripts 71, example 9; adds the buyer-balance check of `buildFundingTransactions` in `packages/escrow` and, in `scripts`, the run 9 replay in which escrow W's seller-alone `withdraw_remaining_funds` counts as one silent-buyer escrow while a buyer-only withdrawal does not); typecheck clean; docs lint clean |
 | 29 Oct 2026 | Local (not CI), architecture audit fixes, version 0.10.0 | `cargo test --locked -- --test-threads=1`: 95 passed (guard 84: 82 rule and TTL tests plus 2 leaf golden-vector tests; claim registry 11); `stellar contract build` passes; vitest: 445 passed across the eight workspaces (claims 42, escrow 89, eurc 67, ramps 56, reconciler 58, wallets 61, scripts 64, example 8; adds the event-reader paging and RPC-limit tests, the submitter retry, idempotency and mempool-eviction resend tests in all three submitters, the revoked-key upkeep test and the funded-in-window metric tests); typecheck and docs lint clean. Guard v0.10 was not yet deployed on testnet then (runs 7 and 8 ran v0.9; run 9 deployed v0.10 with the fee cap) |
 | 29 Oct 2026 | Local (not CI), silent-buyer cap raised from one half to two thirds | vitest: 448 passed across the eight workspaces (claims 42, escrow 89, eurc 67, ramps 56, reconciler 60, wallets 61, scripts 65, example 8; adds the two-thirds cap, the two-per-approval and the 7-of-20 floor tests in the reconciler and the two-thirds footprint test in scripts); typecheck and docs lint clean. Rust counts unchanged (95) |
 | 29 Oct 2026 | Local (not CI), guard v0.10 platform fee cap | `cargo test --locked -- --test-threads=1`: 99 passed (guard 88: 86 rule and TTL tests, adding `x15`-`x16` on both Trustless Work lineages, plus 2 leaf golden-vector tests; claim registry 11); `stellar contract build` passes; vitest: 453 passed across the eight workspaces (claims 42, escrow 89, eurc 67, ramps 56, reconciler 60, wallets 61, scripts 69, example 9; adds the `max_platform_fee_bps` Cfg, flag-parsing, fee-cap probe and run budget tests in scripts and the fee-cap mirror test in the example); typecheck and docs lint clean |
@@ -84,6 +85,12 @@ logic change: `Cfg::max_platform_fee_bps` (set at construction, 500 in run 9, 1,
 `check_escrow` and `register_escrow` with the new error `PlatformFeeOverCap` = 29 (tests `x15`-`x16`);
 `scripts/testnet/deploy.ts` passes it (`--max-platform-fee-bps`, default 500),
 `scripts/lib/soroban.ts` gains `landFailingCall` and `scripts/testnet/v010.ts` is the run 9 script.
+The final-proposal alignment of 4 Nov 2026, after the tag, adds two logic changes:
+`scripts/metric/metric.ts` counts a seller payout through `withdraw_remaining_funds` on an escrow
+that stays disputed, not resolved and not released (guard v0.10) as a resolution to the seller,
+and never a buyer-only withdrawal; `buildFundingTransactions` in `packages/escrow` takes an
+optional `buyerBalance` and builds nothing unless it covers the escrow amount plus shipping (the
+transaction order is unchanged).
 
 ## On-chain metric, dry run on testnet (29 Oct 2026)
 

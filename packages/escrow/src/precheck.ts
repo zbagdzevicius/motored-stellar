@@ -123,6 +123,17 @@ export async function buildFundingTransaction(
   return { tx: ready, unsignedXdr: ready.toXDR() };
 }
 
+/** The buyer's EURC balance does not cover the escrow amount plus shipping. */
+export class InsufficientBuyerBalanceError extends Error {
+  constructor(
+    readonly needed: bigint,
+    readonly balance: bigint,
+  ) {
+    super(`buyer EURC balance ${formatUnits(balance)} is below the escrow amount plus shipping ${formatUnits(needed)}`);
+    this.name = 'InsufficientBuyerBalanceError';
+  }
+}
+
 /** Shipping the buyer pays to the platform address in the funding step, outside the escrow. */
 export interface ShippingPayment {
   /** The EURC classic asset (code and issuer); the escrow's trustline is its SAC. */
@@ -164,6 +175,11 @@ export function buildShippingPaymentTransaction(
  * order has shipping, the shipping payment to the escrow's pinned platform
  * address as the next transaction in the buyer's sequence. Both unsigned, for
  * the buyer's wallet to review and sign; a sponsor may fee-bump each one.
+ *
+ * When `opts.buyerBalance` (the buyer's EURC balance, 7-decimal units, read
+ * just before) is given, nothing is built unless it covers the escrow amount
+ * plus shipping: otherwise the escrow could land funded while the shipping
+ * payment fails, leaving an order held for a fresh shipping payment.
  */
 export async function buildFundingTransactions(
   rpc: Submitter,
@@ -171,7 +187,12 @@ export async function buildFundingTransactions(
   buyer: string,
   precheck: Extract<PrecheckResult, { ok: true }>,
   shipping?: ShippingPayment,
+  opts: { buyerBalance?: bigint } = {},
 ): Promise<{ funding: { tx: Transaction; unsignedXdr: string }; shipping?: { tx: Transaction; unsignedXdr: string } }> {
+  if (opts.buyerBalance !== undefined) {
+    const needed = precheck.escrow.amount + (shipping && shipping.amount > 0n ? shipping.amount : 0n);
+    if (opts.buyerBalance < needed) throw new InsufficientBuyerBalanceError(needed, opts.buyerBalance);
+  }
   const funding = await buildFundingTransaction(rpc, networkPassphrase, buyer, precheck);
   if (!shipping || shipping.amount === 0n) return { funding };
   // Paid only to the address the guard pinned as the escrow's platform (checked by check_escrow).

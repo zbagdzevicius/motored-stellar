@@ -79,6 +79,85 @@ describe('Tranche 3 metric over the recorded (synthetic) fixture', () => {
   });
 });
 
+// Run 9 (29 Oct 2026, guard v0.10, Circle testnet EURC; docs/testnet-proofs.md, docs/runs/run-9.md).
+// IDs, hashes, amounts and ledger close times as recorded on testnet (Horizon). Escrow A is the
+// buyer-approved release; escrow W paid the seller alone through withdraw_remaining_funds past a
+// buyer with no trustline, which leaves W disputed, not resolved and not released.
+describe('run 9 replay: a seller payout through withdraw_remaining_funds counts', () => {
+  const R9 = {
+    platform: 'GBSMR7SXBBZOTKVACPRDFD7MXKBKR3UPTN72EZ74J5HQ27ARMPAI4N2I',
+    twFee: 'GAL6VCTX3EPDZDMHKQENLGQJ4UPZZ5ABBTSRJTQ5N3L53TWR3Z3CX3LW',
+    guard: 'CCRZHNU2CHN62BXALEFHAJEX57AURBB7OWYM37I7JSO7HLALHVJ2KVUZ',
+    token: 'CCUUDM434BMZMYWYDITHFXHDMIVTGGD6T2I5UKNX5BSLXLW7HVR4MCGZ',
+    buyer: 'GDXXMBLWASPHLHCTZNXITELCS3CMWIVTUWHZM336AWZSKXDNNQOMONMC',
+    wBuyer: 'GBQ542QMARB4MPZ3FFIKD6WNADRF5YQZJ44WQAO7OSII5ISDJM3NCXY4',
+    seller: 'GDJMHIH3UWWD4CGZ47JJXXPIFOBXAKBEZSUT3LANWGP6K2AMR6S3PQBH',
+    A: 'CAN3PEKNDM3HIXGAYZSRGWJ66ENF2IBDS67UZITMP3SQXA5PB4364CMD',
+    W: 'CCFF7GHTZ7QFR33MNNQHVCMKDWKU3BSQCTMTN4U5LY65UH5T2Q6FRHRM',
+  };
+  const fp9: Footprint = {
+    network: 'testnet',
+    platform: R9.platform,
+    guard: R9.guard,
+    registry: 'CC6K26NQGSD3UAIUS463ZJCEC7SGEF6V5R34OYZX3WHY6URFTKQ5FBDX',
+    sponsor: 'GCEVJUZZ56LSFVHH6ESD2ZKZMIYRAFMHCWGWO32NUXFPWPKOT4SPUCP5',
+    token: R9.token,
+    escrows: [R9.A, R9.W],
+  };
+  const roles = (approver: string) => ({ approver, receiver: R9.seller, service_provider: R9.seller, platform: R9.platform, release_signer: R9.guard, dispute_resolver: R9.guard });
+  const payout = (escrow: string, txHash: string, at: number) => [
+    { from: escrow, to: R9.twFee, amount: 60_000n, at, txHash },
+    { from: escrow, to: R9.platform, amount: 940_000n, at, txHash },
+    { from: escrow, to: R9.seller, amount: 19_000_000n, at, txHash },
+  ];
+  const A: EscrowObservation = {
+    id: R9.A,
+    amount: 20_000_000n,
+    token: R9.token,
+    roles: roles(R9.buyer),
+    flags: { released: true, resolved: false, disputed: false },
+    buyerApproved: true,
+    transfers: [
+      { from: R9.buyer, to: R9.A, amount: 20_000_000n, at: 1_793_300_635, txHash: '079f5b4bab2d2bf04e8022c540be9ef9ec02202a248606912ef5e536a5496964' },
+      ...payout(R9.A, 'f2cdbd2c87eb0d525efce66bd73d8e179afbfb50e5ac735a9c33b88a9e355618', 1_793_300_665),
+    ],
+  };
+  const W: EscrowObservation = {
+    id: R9.W,
+    amount: 20_000_000n,
+    token: R9.token,
+    roles: roles(R9.wBuyer),
+    flags: { released: false, resolved: false, disputed: true },
+    buyerApproved: false,
+    transfers: [
+      { from: R9.wBuyer, to: R9.W, amount: 20_000_000n, at: 1_793_300_795, txHash: 'eb7d3dd03556237e100bb306e71f47b727eb03147a043ffd2df451504be5d847' },
+      { from: R9.buyer, to: R9.W, amount: 1n, at: 1_793_300_810, txHash: 'fbc16d7460b4c085ed24d61a6a818ecadf39972799e8cf20306acd90defc14f9' },
+      ...payout(R9.W, '2d696d8b8ba704ed3338c1cb061db6ea9519e2829ce2036abd06e3069a3ae972', 1_793_300_970),
+    ],
+  };
+
+  it('counts W as one silent-buyer resolution to the seller, beside the buyer-approved release A', () => {
+    const m = computeFootprintMetric(fp9, [A, W]).result!;
+    expect(m.silentBuyer).toEqual({ total: 1, counted: 1 });
+    expect(m.escrows).toBe(2);
+    expect(m.volumeUnits).toBe(40_000_000n); // 2 EURC gross each, fees included
+    expect(m.distinctBuyers).toBe(2);
+    expect(m.distinctSellers).toBe(1);
+  });
+
+  it('does not count a buyer-only withdraw_remaining_funds from a disputed escrow', () => {
+    const refundTx = 'b'.repeat(64);
+    const buyerOnly: EscrowObservation = {
+      ...W,
+      transfers: [...W.transfers.filter((t) => t.from !== R9.W), { from: R9.W, to: R9.wBuyer, amount: 20_000_001n, at: 1_793_300_970, txHash: refundTx }],
+    };
+    const m = computeFootprintMetric(fp9, [A, buyerOnly]).result!;
+    expect(m.silentBuyer).toEqual({ total: 0, counted: 0 });
+    expect(m.escrows).toBe(1);
+    expect(m.volumeUnits).toBe(20_000_000n);
+  });
+});
+
 describe('metric CLI', () => {
   it('prints PASS and exits 0 over the fixture', async () => {
     const lines: string[] = [];

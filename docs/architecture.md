@@ -342,7 +342,7 @@ All amounts are in 7-decimal units (1 EURC = 10,000,000 units).
   a dispute instead, which also invalidates the buyer's pre-built funding call.
 - **Partial funding.** Never marks the order paid; unwound by a platform dispute and a resolution
   (or break-glass) of the whole balance to the buyer, with fees topped up.
-- **Refunds after release.** The escrow is empty; post-release refunds are off-chain.
+- **Refunds after release.** The escrow is empty: Motored refunds the buyer in EURC from its fee account and recovers it from the seller by invoice under the seller terms; the EUR 1,000 per-order and EUR 5,000 open-value caps bound that credit risk.
 - **Reconciliation.** A scheduled task checks each open escrow's balance, flags and outgoing EURC
   transfers, and each refund top-up, against the order ledger, to the cent
   ([`packages/reconciler`](../packages/reconciler)).

@@ -148,6 +148,14 @@ export function toMetricInput(fp: Footprint, observations: EscrowObservation[]):
       if (tx) releases.push({ escrowId: id, txHash: tx.txHash, closedAt: tx.at * 1000 });
     } else if (o.flags.resolved) {
       for (const tx of txs) resolutions.push({ escrowId: id, txHash: tx.txHash, closedAt: tx.at * 1000, buyerApproved: o.buyerApproved ?? false });
+    } else if (o.flags.disputed) {
+      // Guard v0.10: the seller can be paid alone through withdraw_remaining_funds
+      // (claim or approval rules), which leaves disputed=true, resolved=false and
+      // released=false. Each outflow tx that pays the seller (receiver role) counts
+      // as a resolution to the seller; buyer-only withdrawals (excess, dust, the
+      // buyer's share) are not passed on, so they never count.
+      const toSeller = new Set(o.transfers.filter((t) => t.from === id && t.to === o.roles.receiver && t.amount > 0n).map((t) => t.txHash));
+      for (const tx of txs) if (toSeller.has(tx.txHash)) resolutions.push({ escrowId: id, txHash: tx.txHash, closedAt: tx.at * 1000, buyerApproved: o.buyerApproved ?? false });
     }
   }
 

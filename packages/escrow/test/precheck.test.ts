@@ -10,6 +10,7 @@ import {
   deployerCall,
   escrowToScVal,
   InMemorySubmitter,
+  InsufficientBuyerBalanceError,
   precheckEscrow,
   simContractError,
   simOk,
@@ -105,6 +106,23 @@ describe('funding step: fund_escrow plus shipping to the platform address', () =
     expect(r.shipping).toBeUndefined();
     const z = await buildFundingTransactions(rpc, NET, buyer, await prechecked(rpc), { asset: EURC, amount: 0n });
     expect(z.shipping).toBeUndefined();
+  });
+
+  it("builds nothing unless the buyer's EURC balance covers the escrow amount plus shipping", async () => {
+    const rpc = okRpc();
+    const shipping = { asset: EURC, amount: centsToUnits(499n) };
+    const needed = escrow.amount + shipping.amount;
+    const short = buildFundingTransactions(rpc, NET, buyer, await prechecked(rpc), shipping, { buyerBalance: needed - 1n });
+    await expect(short).rejects.toBeInstanceOf(InsufficientBuyerBalanceError);
+    await expect(short).rejects.toMatchObject({ needed, balance: needed - 1n });
+    // Enough for the escrow alone is not enough: the shipping payment would then fail after funding.
+    await expect(buildFundingTransactions(rpc, NET, buyer, await prechecked(rpc), shipping, { buyerBalance: escrow.amount })).rejects.toBeInstanceOf(InsufficientBuyerBalanceError);
+    const r = await buildFundingTransactions(rpc, NET, buyer, await prechecked(rpc), shipping, { buyerBalance: needed });
+    expect(r.funding.tx.operations[0]!.type).toBe('invokeHostFunction');
+    expect(BigInt(r.shipping!.tx.sequence)).toBe(BigInt(r.funding.tx.sequence) + 1n);
+    // Without shipping the escrow amount alone is enough.
+    const noShip = await buildFundingTransactions(rpc, NET, buyer, await prechecked(rpc), undefined, { buyerBalance: escrow.amount });
+    expect(noShip.shipping).toBeUndefined();
   });
 
   it('refuses a non-positive amount or XLM', async () => {
