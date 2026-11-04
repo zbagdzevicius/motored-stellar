@@ -12,8 +12,10 @@ Built by UAB Motored, which runs a live used car parts marketplace ([motored.eu]
 This is the open-source, chain-side part of the EURC integration proposed for a Stellar Community
 Fund (SCF #46) Integration Track award.
 
-> **Status: testnet only, not yet audited.** Do not hold real value with this code before an external
-> review. See [SECURITY.md](SECURITY.md).
+> **Status: testnet only, not yet audited.** Mainnet runs under caps (EUR 1,000 per order, EUR 5,000
+> open escrow value) until an external audit (we ask for an SCF Audit Bank review).
+> If you deploy this code yourself, do not hold real value without such caps and an external review
+> of your own deployment. See [SECURITY.md](SECURITY.md).
 
 **The ask:** USD 38,850 (370 hours at USD 105 per hour) from the SCF #46 Integration Track, for the billed deliverables listed in
 [SCF #46 deliverables](#scf-46-deliverables-and-where-they-live) (budget in
@@ -41,7 +43,7 @@ not billed.
 
 **For the SCF panel.**
 
-- **Rate.** USD 105 per hour is a market rate for principal- and lead-level engineering in Vilnius, one rate for all work (engineering, verification and user testing); the pre-award code in this repository (99 Rust and 462 TypeScript tests, nine testnet runs) is not billed.
+- **Rate.** USD 105 per hour is a market rate for principal- and lead-level engineering in Vilnius, one rate for all work (engineering, verification and user testing); the pre-award code in this repository (99 Rust and 465 TypeScript tests, nine testnet runs) is not billed.
 - **Weeks.** The build ends in week 16; week 1 is the first Monday after payment #0. Weeks 17 to 24 are the Tranche 3 metric window only: no new build, and the live work inside it (the D12 responses, the D15 dashboard and the U5 interviews) is already counted in Tranche 3's 148 h, so nothing is added for those weeks.
 - **User testing.** Run by Žygimantas Bagdzevičius (co-founder, CEO and CTO; principal engineer, ex-Amazon), who built Motored's checkout, so findings go straight into fixes; its 30 h are separate from the 340 h of engineering. Irmantas Lukičiovas (co-founder and COO) recruits the sellers and buyers for the sessions, unpaid and outside the budget.
 - **Who builds it.** Žygimantas owns D1, D3, D6, D7, D10, D12, D13, D15 and U1-U5; Ernestas owns D2, D4, D5, D8, D11 and D14. Žygimantas 227 h (197 h engineering + 30 h user testing, about 14 h a week), Ernestas 143 h (about 9 h a week), over 16 build weeks; 197 + 143 = 340 h engineering, + 30 h user testing = 370 h. Owners per deliverable: [SCF #46 deliverables](#scf-46-deliverables-and-where-they-live).
@@ -87,8 +89,8 @@ Circle's published testnet address), from this repository's own scripts. 2 EURC 
 | Circle testnet EURC (Stellar Asset Contract) | [`CCUUDM43...R4MCGZ`](https://stellar.expert/explorer/testnet/contract/CCUUDM434BMZMYWYDITHFXHDMIVTGGD6T2I5UKNX5BSLXLW7HVR4MCGZ) |
 | Escrow code | Trustless Work's own deployed testnet Wasm `7c3f7b2a`, unmodified |
 | Earlier runs | Runs 4 to 8: release, dispute refund, break-glass refund, silent-buyer payout against a depth-32 delivery claim, buyer contest, four refusals landed as failed transactions ([table below](#testnet-runs)) |
-| CI (last logged green run) | All four jobs green on 2 Nov 2026, 99 Rust and 462 TypeScript tests ([run 41505458624](https://github.com/zbagdzevicius/motored-stellar/actions/runs/41505458624), logged in [docs/verification.md](docs/verification.md)); the badge above shows the latest push |
-| Tests | 99 Rust contract tests (guard 88, claim registry 11) and 462 TypeScript tests, counted locally on 29 Oct 2026 and in CI on 2 Nov 2026 |
+| CI (last logged green run) | All four jobs green on 2 Nov 2026, 99 Rust and 462 TypeScript tests at that commit ([run 41505458624](https://github.com/zbagdzevicius/motored-stellar/actions/runs/41505458624), logged in [docs/verification.md](docs/verification.md)); the badge above shows the latest push |
+| Tests | 99 Rust contract tests (guard 88, claim registry 11) and 465 TypeScript tests, counted locally on 4 Nov 2026 at the filing-day commit (462 in CI on 2 Nov 2026; the 3 added since cover the precheck buyer-balance check and the metric's `withdraw_remaining_funds` counting) |
 
 Every transaction of run 9 is in
 [docs/testnet-proofs.md, Run 9](docs/testnet-proofs.md#run-9-guard-v010-on-circle-testnet-eurc-29-oct-2026-1903-to-1910-utc).
@@ -177,7 +179,7 @@ delay and the contest window were shortened from 7 days to 120 s so a run fits i
 | 6 | 29 Oct 2026 | v0.8 (same deployment) | `XEUR` lab asset | `npm run testnet:refusals`. Four refused payouts landed as **failed transactions** carrying the guard's own error code, each followed by the legitimate settlement of the same escrow: wrong fee address (`BadFeeAddr` = 15), seller payout with no delivery claim (`NoClaim` = 8), break-glass payout to the seller (`NotWholeToBuyer` = 13), seller payout while the buyer's contest stands (`Contested` = 25) | [Run 6](docs/testnet-proofs.md#run-6-refusals-landed-as-failed-transactions-29-oct-2026-0702-to-0705-utc) |
 | 7 | 29 Oct 2026 | v0.9 (fresh deployment) | lab asset | The run 4 and run 5 scenarios again (release, dispute refund, break-glass refund, silent-buyer payout against a depth-32 claim, buyer contest), then the extended TTLs read back from the ledger | [Run 7](docs/testnet-proofs.md#run-7-guard-v09-with-ttl-upkeep-29-oct-2026-0927-to-0935-utc) |
 | 8 | 29 Oct 2026 | v0.9 + registry (fresh deployment) | **Circle testnet EURC** | Every scenario above with 2 EURC orders (release, dispute refund, break-glass refund, silent-buyer payout against a depth-32 claim, buyer contest and refund) and the four refusals of run 6 landed again as failed transactions in EURC. Both anchored claims re-check `ok` with `npm run claims:recheck -- --from-state` | [Run 8](docs/testnet-proofs.md#run-8-real-circle-testnet-eurc-guard-v09-29-oct-2026-1156-to-1205-utc) |
-| 9 | 29 Oct 2026 | **v0.10** + fresh registry | **Circle testnet EURC** | Buyer-approved release (2 EURC order, seller paid 1.9 EURC); the seller-only `withdraw_remaining_funds` payout past a buyer who removed their EURC trustline after 1 unit of dust was sent to the escrow (seller paid 1.9 EURC alone, the dust left for the buyer, the registration closed); an escrow 1 bp over the fee cap whose `register_escrow` failed with `PlatformFeeOverCap` = 29, next to one at the cap that registered | [Run 9](docs/testnet-proofs.md#run-9-guard-v010-on-circle-testnet-eurc-29-oct-2026-1903-to-1910-utc) |
+| 9 | 29 Oct 2026 | **v0.10** + fresh registry | **Circle testnet EURC** | Buyer-approved release (2 EURC order, seller paid 1.9 EURC); the seller-only `withdraw_remaining_funds` payout past a buyer who removed their EURC trustline after 1 unit of dust was sent to the escrow (seller paid 1.9 EURC alone, the dust left for the buyer, the registration closed); B dispute refund (whole balance to the buyer, fees topped up); C break-glass refund at 40% funding; an escrow 1 bp over the fee cap whose `register_escrow` failed with `PlatformFeeOverCap` = 29, next to one at the cap that registered | [Run 9](docs/testnet-proofs.md#run-9-guard-v010-on-circle-testnet-eurc-29-oct-2026-1903-to-1910-utc) |
 
 Notes on the runs:
 
@@ -224,22 +226,24 @@ In the lab runs a lab-issued asset stood in for EURC; every tx is linked in
 
 The initial published history (pushed 29 Oct 2026) ends at the tag `pre-award-baseline`; diff any
 billed deliverable against that tag. The tag `pre-award-filing` marks the state of this repository
-on the SCF #46 filing day.
+on the SCF #46 filing day (the tag is moved to the final filing-day commit). The 3 to 4 Nov commits
+in it (the precheck buyer-balance check, the metric counting `withdraw_remaining_funds` payouts) are
+pre-award work included in that state, not billed.
 
 ### Tests and CI
 
-- **Now:** 99 Rust contract tests (guard 88, claim registry 11) and 462 TypeScript tests, counted
-  locally on 29 Oct 2026 with guard v0.10, its platform fee cap and shipping paid outside the escrow
-  (`cargo test` and vitest across the eight workspaces), and re-counted on 2 Nov 2026 with the
-  commands in [Reproduce the test counts](#reproduce-the-test-counts).
-- **CI:** the workflow runs on every push; CI is green with 99 Rust and 462 TypeScript tests
-  ([run 41505458624](https://github.com/zbagdzevicius/motored-stellar/actions/runs/41505458624), 2 Nov 2026,
-  logged in [docs/verification.md](docs/verification.md)).
+- **Now:** 99 Rust contract tests (guard 88, claim registry 11) and 465 TypeScript tests, re-counted
+  locally on 4 Nov 2026 at the filing-day commit with the commands in
+  [Reproduce the test counts](#reproduce-the-test-counts) (`cargo test` and vitest across the eight
+  workspaces).
+- **CI:** the workflow runs on every push; the last logged green run had 99 Rust and 462 TypeScript
+  tests ([run 41505458624](https://github.com/zbagdzevicius/motored-stellar/actions/runs/41505458624), 2 Nov 2026,
+  logged in [docs/verification.md](docs/verification.md)), before the 3 tests added on 3 to 4 Nov.
 
 <details>
 <summary>Earlier test counts</summary>
 
-Before shipping moved out of the escrow the TypeScript count was 453; before the fee cap they were
+On 2 Nov 2026 the TypeScript count was 462; before shipping moved out of the escrow it was 453; before the fee cap they were
 95 and 448; the v0.9 counts were 83 and 413. Earlier counts (382 and 388 locally, 76 and 393 in CI before v0.9)
 are logged in [docs/verification.md](docs/verification.md).
 
@@ -248,8 +252,8 @@ are logged in [docs/verification.md](docs/verification.md).
 ### Reproduce the test counts
 
 The counts are what these commands print; CI runs the same commands (`.github/workflows/ci.yml`,
-jobs `typescript` and `contracts`). Re-counted locally on 2 Nov 2026 at the current commit:
-99 Rust and 462 TypeScript.
+jobs `typescript` and `contracts`). Re-counted locally on 4 Nov 2026 at the current commit:
+99 Rust and 465 TypeScript.
 
 ```bash
 # Rust: 99 = guard 88 + claim registry 11 (contracts/Cargo.toml workspace).
@@ -261,10 +265,10 @@ cargo test --locked -- --list 2>/dev/null | grep -c ': test$'   # 99, listed wit
 cargo test --locked -- --test-threads=1                  # runs them: 11 + 88 passed
 cd ..
 
-# TypeScript: 462 across the eight npm workspaces (Node >= 22.12).
+# TypeScript: 465 across the eight npm workspaces (Node >= 22.12).
 npm ci
 npm test --workspaces --if-present 2>&1 | grep -E 'Tests +[0-9]+ passed' | awk '{s+=$2} END {print s}'
-# per workspace: claims 42, escrow 97, eurc 68, ramps 56, reconciler 60, wallets 61, scripts 69, example 9
+# per workspace: claims 42, escrow 98, eurc 68, ramps 56, reconciler 60, wallets 61, scripts 71, example 9
 ```
 
 Two things that make a count look different:
@@ -454,7 +458,7 @@ repository and run in CI (run links in [docs/verification.md](docs/verification.
 
 | Part | Implemented | Tested | Not yet |
 |---|---|---|---|
-| Guard contract v0.10 (v0.9 rules plus an unblockable seller payout, a platform fee cap and mainnet-sized TTL; v0.9 = v0.8 plus TTL upkeep) | yes | lab-proven (v0.8: 66/66 in the lab, 3 testnet runs); 88 tests here; runs 4 to 6 (v0.8), run 7 (v0.9), run 8 (v0.9 on Circle testnet EURC), run 9 (v0.10 on Circle testnet EURC: release, seller-only withdrawal, fee-cap refusal) | external audit |
+| Guard contract v0.10 (v0.9 rules plus an unblockable seller payout, a platform fee cap and mainnet-sized TTL; v0.9 = v0.8 plus TTL upkeep) | yes | lab-proven (v0.8: 66/66 in the lab, 3 testnet runs); 88 tests here; runs 4 to 6 (v0.8), run 7 (v0.9), run 8 (v0.9 on Circle testnet EURC), run 9 (v0.10 on Circle testnet EURC: release, seller-only withdrawal, B dispute refund, C break-glass refund, fee-cap refusal) | external audit |
 | Claim registry | yes | lab-proven on testnet; 11 unit tests (v0.10 adds in-contract TTL upkeep) | `Anchored` event for indexers |
 | Escrow adapter and release service | yes | unit tests written | live run against the TW v1 REST API |
 | Claims batching, re-check, TTL upkeep | yes | unit tests + golden vectors shared with Rust; the guard's own TTL upkeep ran in run 7 | registry-root TTL top-up by the anchoring job, run live |

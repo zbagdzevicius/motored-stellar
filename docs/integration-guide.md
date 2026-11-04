@@ -6,8 +6,10 @@ escrow. Cards stay. Nothing in this guide replaces your card flow; EURC is an ex
 option on orders that qualify.
 
 This guide follows the design in [architecture.md](architecture.md) and the code in this
-repository. Testnet only until you have an external audit of the guard and registry and your own
-legal review of the roles you hold.
+repository. Do not hold real value without per-order and open-value caps and an external review of
+your own guard and registry deployment, plus your own legal review of the roles you hold. (Motored
+runs mainnet under caps of EUR 1,000 per order and EUR 5,000 open escrow value until its external
+audit.)
 
 ## 0. What you plug in
 
@@ -95,8 +97,9 @@ Users should not need XLM. Your sponsor account creates the user's account with
 `BeginSponsoringFutureReserves` and adds the EURC trustline in the same transaction; the user
 co-signs `EndSponsoringFutureReserves` and the trustline. Afterwards, fee-bump only an allowlist
 of single-operation transactions: `fund_escrow`, milestone approval and `dispute_escrow` on the
-user's own order escrow, the buyer's `contest` on the guard, trustline operations, and the
-seller's off-ramp payment to their stored ramp address. Cap inner fees, rate-limit per wallet, and
+user's own order escrow, the buyer's `contest` on the guard, trustline operations, the seller's
+off-ramp payment to their stored ramp address, and the buyer's EURC shipping payment to your pinned
+platform address (shipping is outside the escrow, paid as the next transaction after `fund_escrow`). Cap inner fees, rate-limit per wallet, and
 re-simulate before signing. Budget 1.5 XLM of locked reserve per sponsored wallet (account plus one
 trustline).
 
@@ -199,7 +202,7 @@ needed), then the buyer-signed `contest`, then `dispute_escrow`, as separate tra
   signs a challenge) to each virtual account and liquidation address.
 
 Bridge docs: https://apidocs.bridge.xyz (virtual accounts, liquidation addresses, KYC links,
-sandbox). Open question (asked of Bridge in writing, November 2026): EUR/SEPA with EURC on Stellar for our entity;
+sandbox). Open question (to be asked of Bridge in writing before Tranche 1): EUR/SEPA with EURC on Stellar for our entity;
 availability is per customer, so confirm it for yours before you build on it. Fallback: architecture section 11 (open partner confirmations).
 
 Code: [`packages/ramps`](../packages/ramps).
@@ -214,7 +217,8 @@ Code: [`packages/reconciler`](../packages/reconciler).
 
 ## 12. Before mainnet
 
-- External audit of your guard and registry deployment.
+- External audit of your guard and registry deployment, or, until it is done, per-order and
+  open-value caps (Motored: EUR 1,000 per order, EUR 5,000 open escrow value).
 - Legal review of each role you hold (release key, resolver key, opening disputes and editing
   escrows as platform, refund top-ups, sponsorship). The resolver key holder may be a licensed
   party; the guard's `resolver_admin` exists for that.

@@ -46,7 +46,7 @@ sponsor account's XLM; users' wallet keys (never held by the platform); order-to
 | B3 | Stale quote, partial or multi-transaction fill | The buyer confirms an old price, or a swap stops part-way | The SDK refuses confirm after 10 s and we re-quote on click; `fund_escrow` runs only if the final `bought` covers the order, never sized from the quote; a short swap funds nothing and the EURC stays in the buyer's wallet (CI stub tests) | open (D4) |
 | B4 | Tampered swap transaction | A compromised Broker server builds a path payment to a third party, an inflated fee op or an unknown contract call | Before the buyer signs: classic path-payment ops validated in full (destination = buyer, assets, max sold, fee ops only to the quoted destinations and amounts); Soroban AMM legs allowed only for allowlisted contract IDs and functions; anything else refused (CI stub test: inflated fee op). Broker transactions are never fee-bumped by the sponsor (row D4, sponsor drain) | open (D4) |
 | E1 | Guard defect | Bug in the release or resolution branch | Refund-only break-glass branch with its own key and tests; per-order and total open-value caps until an external audit | enforced + operational |
-| E2 | Runtime with several keys compromised | Attacker holds resolver + issuer + platform keys | Sellers of existing escrows only, after 7 days, revocable; separate service identities; offline revoker; alerts; on mainnet (D10) the release, resolver and issuer keys sit on a non-exportable signer or each in its own service, so the web and worker runtimes hold no signing key | operational |
+| E2 | Runtime with several keys compromised | Attacker holds resolver + issuer + platform keys | Sellers of existing escrows only, after 7 days, revocable; separate service identities; offline revoker; alerts; on mainnet (D10) Motored's keys (release, resolver + admin, sponsor, fee account, registry issuer) sit on a non-exportable signer (Cloud KMS Ed25519 where the region offers it, else one isolated service per key), so the web and worker runtimes hold no signing key | operational |
 | E3 | Compromised checkout | Escrows created with attacker roles or an inflated platform fee | Guard pins platform, fee address, fee rate cap and Wasm (#22, #23, #15, #29, #12); an escrow naming another platform, or a fee above the cap, is never registered, so its funds stay locked rather than paid out. Checkout simulates `check_escrow` before the buyer signs, so such an escrow is not funded; if one is funded anyway, nothing can pay it out (the guard checks registration before every branch, break-glass included) and Motored repays the buyer from its own funds | enforced + operational |
 | E4 | Key rotation abuse | Admin swaps in attacker keys | Public `KeysProposed` event and a 7-day timelock before `apply_keys` | enforced |
 | E5 | No in-contract rotation of fixed roles | Registry issuer and revoker, guard admin and resolver admin have no setter; the guard's registry pointer is fixed | Each is a multisig G-account whose signers rotate at the account level; replacing an account means a new registry and guard for new escrows | operational |
@@ -83,19 +83,22 @@ and Trustless Work's API.
 Alerts read Soroban RPC `getEvents`, Horizon, and the reconciler output. Severity P1 pages an
 operator; P2 is reviewed the same day.
 
-| Alert | Source | Severity |
-|---|---|---|
-| EURC transfer out of a registered escrow with no matching release, resolution or withdrawal record | SAC transfer events | P1 |
-| `update_escrow` on a registered escrow | Trustless Work events | P1 |
-| Resolution without a dispute record in the platform's ledger | Trustless Work events + ledger | P1 |
-| Every `anchor` and every `revoke` | Registry events | P2 (anchor), P1 (revoke) |
-| `KeysProposed`, `KeysApplied`, `ResolverRotated` | Guard events | P1 |
-| `BuyerContested` | Guard events | P2 |
-| Fee-account EURC trustline missing or deauthorised (platform and Trustless Work) | Horizon | P1 |
-| SAC `set_authorized(false)` touching the footprint | SAC events | P1 |
-| Escrow stuck: funded, no movement for N days beyond the expected window | Reconciler | P2 |
-| Failed release or resolution submission | Submitter | P2 |
-| Reconciliation difference above 0 units (unexplained) | Reconciler | P1 |
-| Entry TTL below threshold (registry, guard, registrations, open escrows, TW Wasm code) | RPC `getLedgerEntries` | P2 |
-| Sponsor account balance below threshold | Horizon | P2 |
-| New escrow naming the platform address with no matching order | Trustless Work `tw_init` events | P1 |
+The same 14 alerts, in the same order, are listed in
+[scf-46-architecture.md, appendix A, D7](scf-46-architecture.md#d7-alerts).
+
+| # | Alert | Source | Severity |
+|---|---|---|---|
+| 1 | EURC transfer out of a registered escrow with no matching release, resolution or withdrawal record | SAC transfer events | P1 |
+| 2 | Change to a registered escrow (`update_escrow`) | Trustless Work events | P1 |
+| 3 | Every resolution (guard-authorised `resolve_dispute`); P1 when the platform's ledger has no dispute record for it | Trustless Work events + ledger | P2, P1 without a dispute record |
+| 4 | Dispute opened on an escrow whose milestones the buyer has approved (starts the buyer's contest window) | Trustless Work events | P2 |
+| 5 | Buyer contest (`BuyerContested`) | Guard events | P2 |
+| 6 | Every claim anchor (`anchor`) and every claim revocation (`revoke`) | Registry events | P2 (anchor), P1 (revoke) |
+| 7 | Guard key proposals and rotations (`KeysProposed`, `KeysApplied`, `ResolverRotated`) | Guard events | P1 |
+| 8 | Circle freeze or fee-account trustline: SAC `set_authorized(false)` touching the footprint, or a fee account's (platform or Trustless Work) EURC trustline missing or deauthorised | SAC events + Horizon | P1 |
+| 9 | Stuck escrow: funded, no movement for N days beyond the expected window | Reconciler | P2 |
+| 10 | Failed release or resolution submission | Submitter | P2 |
+| 11 | Reconciliation gap: a difference above 0 units that is not explained | Reconciler | P1 |
+| 12 | Entry near expiry: TTL below threshold (registry, guard instance, escrow registrations, open escrows, Trustless Work Wasm code) | RPC `getLedgerEntries` | P2 |
+| 13 | Low sponsor balance | Horizon | P2 |
+| 14 | Orphan escrow: a new escrow naming the platform address with no matching order | Trustless Work `tw_init` events | P1 |

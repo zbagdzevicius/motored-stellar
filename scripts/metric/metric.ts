@@ -14,7 +14,8 @@
  *   footprint token and name the guard as both release_signer and
  *   dispute_resolver, with receiver == service_provider and seller != buyer;
  * - the funding window: `windowDays` (default 45) consecutive days from the
- *   first funding of a counted (non-excluded, eligible) escrow, or
+ *   first full funding (cumulative inflows reaching the escrow amount) of a
+ *   counted (non-excluded, eligible) escrow, or
  *   `windowStart`; an escrow funded inside it counts if it closes within
  *   `closeDays` (default 14) after the window ends;
  * - mapping per-escrow observations (state + token transfers) into the
@@ -136,8 +137,18 @@ export function toMetricInput(fp: Footprint, observations: EscrowObservation[]):
     const inflows = o.transfers.filter((t) => t.to === o.id && t.amount > 0n);
     if (inflows.length === 0) { skipped.push({ escrow: id, reason: 'never funded' }); continue; }
     const isExcluded = excluded.has(id);
-    const fundedAt = Math.min(...inflows.map((t) => t.at));
-    if (!isExcluded) fundings.push(fundedAt);
+    // Funded = the first transfer at which cumulative funding reaches the escrow amount, so dust
+    // below the amount never opens the window. An escrow that never reaches its amount keeps its
+    // last inflow as fundedAt and does not open the window.
+    const ordered = [...inflows].sort((x, y) => x.at - y.at);
+    let cumulative = 0n;
+    let fullyFundedAt: number | undefined;
+    for (const t of ordered) {
+      cumulative += t.amount;
+      if (cumulative >= o.amount) { fullyFundedAt = t.at; break; }
+    }
+    const fundedAt = fullyFundedAt ?? ordered[ordered.length - 1]!.at;
+    if (!isExcluded && fullyFundedAt !== undefined) fundings.push(fundedAt);
 
     escrows.push({ escrowId: id, platform: o.roles.platform, buyer: o.roles.approver, seller: o.roles.receiver, amount: o.amount, fundedAt: fundedAt * 1000, excluded: isExcluded });
     for (const t of o.transfers) if (t.from === id) transfers.push({ txHash: t.txHash, from: t.from, to: t.to, amount: t.amount });
@@ -215,7 +226,7 @@ export function renderReport(r: FootprintMetricReport, opts: { perEscrow?: boole
       row(m.thresholds.buyers, 'distinct buyer wallets', `${m.distinctBuyers} (floor >= 12, target 20)`),
       row(m.thresholds.sellers, 'distinct sellers paid', `${m.distinctSellers} (floor >= 4, target 6)`),
       `info  silent-buyer resolutions: ${m.silentBuyer.counted} counted of ${m.silentBuyer.total}`,
-      `info  excluded (test, team, related-party): ${m.excluded}; refunds ignored: ${m.refundsIgnored}`,
+      `info  excluded (test, founder, team, related-party): ${m.excluded}; refunds ignored: ${m.refundsIgnored}`,
       `info  target (EUR 7,000 / 35 escrows / 20 buyers / 6 sellers): ${m.target.met ? 'met' : 'not met'}`,
       `info  stretch: volume ${m.stretch.volume ? 'met' : 'not met'}, escrows ${m.stretch.escrows ? 'met' : 'not met'}`,
     );

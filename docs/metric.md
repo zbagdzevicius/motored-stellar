@@ -30,14 +30,16 @@ A release **counts** when an escrow is:
    buyer's share) never counts.
 
 **Volume** is the gross amount leaving the escrow towards the seller side: for a release,
-`escrow.amount` (seller net plus the Trustless Work fee plus the platform fee); for a resolution,
-the seller's share of the distribution map; for a seller-alone withdrawal, the whole outflow of
+`escrow.amount` (seller net plus the Trustless Work fee plus the platform fee, so Motored's fee is
+counted); for a resolution that pays everything to the seller, the whole outflow of that transaction
+(seller net plus both fees); for a split resolution (seller and buyer both paid), the seller's net
+only, which is conservative; for a seller-alone withdrawal, the whole outflow of
 that transaction (seller net plus both fees). Refunds to the buyer do not count. Shipping is outside
 the escrow amount: the buyer pays it to the platform address in the funding step (29 Oct 2026
 design), so it is never in the counted volume. The floor numbers below are unchanged.
 
 **Window:** an escrow counts when it is **funded** inside a 45-day funding window (starting at the
-first funding of a counted escrow) and released or resolved to the seller within 14 days after
+first full funding of a counted escrow) and released or resolved to the seller within 14 days after
 that window ends. The whole metric therefore closes 59 days after the first counted funding, and an
 escrow funded late in the window still has time to close. The closing deadline is day 80 after the
 Tranche 2 payment (week 24 at the latest in the 16-week build plan), inside the 90-day tranche
@@ -72,11 +74,13 @@ Tranche 3; the floor stands unless SCF agrees.
 In code: `METRIC_THRESHOLDS` in `packages/reconciler/src/metric.ts` is the floor and decides the
 PASS/FAIL verdict printed by `scripts/metric`; `METRIC_TARGET` and the stretch values are reported
 alongside it. `METRIC_WINDOW_DAYS` (45) and `METRIC_CLOSE_DAYS` (14) set the window; each escrow's
-`fundedAt` is its first incoming transfer.
+`fundedAt` is the first transfer at which its cumulative incoming EURC reaches the escrow amount, so
+dust deposits below the escrow amount do not open the window (an escrow that never reaches its
+amount does not open it either).
 
 The number of new EURC-holding accounts the sponsor account sponsored is reported as information.
 
-**Not counted:** test, team and related-party orders, which are listed separately.
+**Not counted:** test, founder, team and related-party orders, which are listed separately.
 
 ## Footprint
 
@@ -116,8 +120,10 @@ footprint at award time; mainnet use waits for the gates in the submission's Tra
    collect the escrow set (and cross-check it against the published escrow list).
 2. Read `tw_release` events for those escrows: gross = `escrow.amount` at release.
 3. Resolutions: Trustless Work's resolution event carries no amounts, so read the EURC SAC
-   `transfer` events out of each resolved escrow in the same transaction, and sum the transfers to
-   the escrow's stored seller (plus the fee legs attributed pro rata to the seller's share).
+   `transfer` events out of each resolved escrow in the same transaction. When everything goes to
+   the escrow's stored seller, the whole outflow counts (seller net plus both fees); when the
+   resolution is split between seller and buyer, only the transfers to the seller count (the
+   seller's net, conservative: fees are not attributed).
    Checked 29 Oct 2026: the topics `tw_init`, `tw_release` and `tw_disp_resolve` (the resolution
    event) are in both deployed Trustless Work Wasm files (testnet `7c3f7b2a`, mainnet `96d51751`,
    fetched by hash with [`fetch.sh`](../contracts/third_party/tw-wasm/fetch.sh)) and in Trustless
@@ -134,8 +140,9 @@ footprint at award time; mainnet use waits for the gates in the submission's Tra
    in `scripts/test/metric.test.ts` and counts as one silent-buyer escrow.
 5. Distinct buyers and sellers come from the guard registration (`Reg.buyer`, `Reg.seller`) of each
    counted escrow.
-6. Classify a resolution as silent-buyer when the guard authorised it on the claim path
-   (`ResolveSeller`).
+6. Classify a resolution as silent-buyer when not every milestone of the escrow was approved by the
+   buyer (`buyerApproved` = every milestone `approved`, in `scripts/metric/collect.ts`; a resolution
+   without it counts as silent in `packages/reconciler/src/metric.ts`).
 
 RPC keeps events for about 7 days only, so a full recompute reads from the observation exports
 D14's scheduled CI job commits at least every 3 days from D1 on testnet, and from the weekly signed
@@ -163,7 +170,7 @@ FAIL  escrows released or resolved to the seller: 2 (floor >= 20, target 35)
 FAIL  distinct buyer wallets: 1 (floor >= 12, target 20)
 FAIL  distinct sellers paid: 1 (floor >= 4, target 6)
 info  silent-buyer resolutions: 1 counted of 1
-info  excluded (test, team, related-party): 0; refunds ignored: 3
+info  excluded (test, founder, team, related-party): 0; refunds ignored: 3
 info  target (EUR 7,000 / 35 escrows / 20 buyers / 6 sellers): not met
 info  stretch: volume not met, escrows not met
 info  sponsored accounts: 0
