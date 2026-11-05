@@ -601,6 +601,11 @@ impl Guard {
         bump_instance(&env);
         c.resolver_pk = resolver.clone();
         env.storage().instance().set(&DK::Cfg, &c);
+        // The immediate rotation wins over a pending set: rewrite its resolver so apply_keys cannot restore the old key.
+        if let Some(mut p) = env.storage().instance().get::<_, Pending>(&DK::Pending) {
+            p.resolver = resolver.clone();
+            env.storage().instance().set(&DK::Pending, &p);
+        }
         ResolverRotated { resolver }.publish(&env);
     }
 }

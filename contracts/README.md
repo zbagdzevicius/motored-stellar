@@ -34,11 +34,11 @@ The order matters. The guard tests:
 only reads the Wasm code entry; nothing in this repository deploys to mainnet. Set
 `TW_WASM_SRC_DIR` to copy the two files from a local cache instead (still hash-checked).
 
-Expected result: 99 tests. 86 guard tests in `guard/src/test.rs` (41 tests x 2 Trustless Work
+Expected result: 101 tests. 88 guard tests in `guard/src/test.rs` (42 tests x 2 Trustless Work
 lineages, plus `m01`-`m04`; v0.9 added the TTL upkeep tests `x08`-`x10` and `m03`; v0.10 added
 `x11`-`x14` and `m04`, then the platform fee cap tests `x15` (one basis point over the cap, and
 9,900 bps, refused at precheck and registration) and `x16` (exactly at the cap, registered and
-released)), the 2 leaf golden-vector tests in `guard/src/test_vectors.rs` (the
+released), and `t12b` (an emergency `rotate_resolver` also rewrites a pending resolver)), the 2 leaf golden-vector tests in `guard/src/test_vectors.rs` (the
 same vectors are asserted by `packages/claims`), and 11 claim-registry tests. `cargo test -- --nocapture` prints the payout splits and the metered CPU
 and memory cost of a seller resolution with a depth-32 proof (`m02`).
 

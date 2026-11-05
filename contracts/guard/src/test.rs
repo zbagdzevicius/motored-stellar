@@ -2,10 +2,11 @@
 //! Guard v0.10 tests against Trustless Work's DEPLOYED single-release v1 Wasm files:
 //!   testnet 7c3f7b2a... (release/resolve/withdraw take trustless_work_address as arg 1)
 //!   mainnet 96d51751... (fee account GBWWSOAT... hardcoded)
-//! Each test in the `lineage!` macro runs for both lineages (modules `tn` and `mn`): 2 x 41 tests,
-//! plus m01, m02, m03 and m04, 86 in total (v0.9 added x08 to x10 and m03, the TTL upkeep tests;
+//! Each test in the `lineage!` macro runs for both lineages (modules `tn` and `mn`): 2 x 42 tests,
+//! plus m01, m02, m03 and m04, 88 in total (v0.9 added x08 to x10 and m03, the TTL upkeep tests;
 //! v0.10 added x11 to x14 and m04: the seller withdrawal that no buyer leg can block, and
-//! mainnet-sized TTL upkeep; then x15 and x16: the platform fee cap).
+//! mainnet-sized TTL upkeep; then x15 and x16: the platform fee cap; then t12b: rotate_resolver
+//! also rewrites a pending resolver).
 //!
 //! Prerequisites (see contracts/README.md):
 //!   ./third_party/tw-wasm/fetch.sh     the two Trustless Work Wasm files, verified by SHA-256
@@ -711,6 +712,23 @@ mod $m {
         w.guardc().rotate_resolver(&nk);
         let auths = w.env.auths();
         assert_eq!(auths[0].0, w.resolver_admin);
+    }
+
+    #[test]
+    fn t12b_rotate_resolver_survives_pending_apply() {
+        // an emergency rotate_resolver must not be undone by a pending key set that still holds the old resolver
+        let w = setup();
+        let r_old = BytesN::from_array(&w.env, &[9; 32]);
+        let r_new = BytesN::from_array(&w.env, &[10; 32]);
+        w.env.mock_all_auths();
+        w.guardc().propose_keys(&r_old, &r_old, &r_old);
+        w.guardc().rotate_resolver(&r_new);
+        w.env.ledger().with_mut(|l| l.timestamp += 7 * DAY);
+        assert!(matches!(w.guardc().try_apply_keys(), Ok(Ok(()))), "anyone may apply after eta");
+        let c: Cfg = w.env.as_contract(&w.guard, || w.env.storage().instance().get(&DK::Cfg).unwrap());
+        assert_eq!(c.resolver_pk, r_new, "apply_keys re-installed the rotated-out resolver");
+        assert_eq!(c.release_pk, r_old);
+        assert_eq!(c.breakglass_pk, r_old);
     }
 
     #[test]
