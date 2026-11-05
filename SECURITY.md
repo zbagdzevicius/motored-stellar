@@ -5,7 +5,7 @@
 This repository is **testnet only** and **not yet audited**. The guard contract and the claim
 registry have unit tests that run against the escrow Wasm files Trustless Work has deployed,
 and a testnet proof run (see [docs/verification.md](docs/verification.md)), but no external
-audit yet (we ask for an SCF Audit Bank review). Motored's mainnet deployment runs
+audit yet (we ask for an SCF Audit Bank review). Motored's mainnet deployment will run
 under caps (EUR 1,000 per order, EUR 5,000 open escrow value) until that external audit. Any other
 deployment that holds real value should cap exposure per order and in total, as described in
 [docs/threat-model.md](docs/threat-model.md), and have an external review of its own.

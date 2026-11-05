@@ -12,7 +12,7 @@ Built by UAB Motored, which runs a live used car parts marketplace ([motored.eu]
 This is the open-source, chain-side part of the EURC integration proposed for a Stellar Community
 Fund (SCF #46) Integration Track award.
 
-> **Status: testnet only, not yet audited.** Mainnet runs under caps (EUR 1,000 per order, EUR 5,000
+> **Status: testnet only, not yet audited.** Mainnet will run under caps (EUR 1,000 per order, EUR 5,000
 > open escrow value) until an external audit (we ask for an SCF Audit Bank review).
 > If you deploy this code yourself, do not hold real value without such caps and an external review
 > of your own deployment. See [SECURITY.md](SECURITY.md).
@@ -54,7 +54,7 @@ not billed.
 **Attacks and how they are blocked** (D7; IDs from the STRIDE table in [docs/threat-model.md](docs/threat-model.md)):
 
 - **Stolen release key** -> Trustless Work still needs the buyer's approval, and release pays only the fixed seller (S1).
-- **Payout to a third address** -> the guard pays only the buyer or seller, never above the escrow amount (S2, T6).
+- **Payout to a third address** -> the guard pays only the buyer or seller (plus the two pinned fee accounts), never above the escrow amount (S2, T6).
 - **False delivery claim** -> public on-chain, pays only after 7 days, the buyer can dispute it in that window, and an offline revoker cancels a forged batch (S3, R1).
 - **Inflated platform fee** -> the guard never registers an escrow above the 10% cap (T3b, E3).
 - **Double payout or refund** -> tx hashes checked before any re-send, a second seller payout refused on-chain, CI tests on double refunds (D8, T6).
@@ -89,8 +89,8 @@ Circle's published testnet address), from this repository's own scripts. 2 EURC 
 | Circle testnet EURC (Stellar Asset Contract) | [`CCUUDM43...R4MCGZ`](https://stellar.expert/explorer/testnet/contract/CCUUDM434BMZMYWYDITHFXHDMIVTGGD6T2I5UKNX5BSLXLW7HVR4MCGZ) |
 | Escrow code | Trustless Work's own deployed testnet Wasm `7c3f7b2a`, unmodified |
 | Earlier runs | Runs 4 to 8: release, dispute refund, break-glass refund, silent-buyer payout against a depth-32 delivery claim, buyer contest, four refusals landed as failed transactions ([table below](#testnet-runs)) |
-| CI (last logged green run) | All four jobs green on 2 Nov 2026, 99 Rust and 462 TypeScript tests at that commit ([run 41505458624](https://github.com/zbagdzevicius/motored-stellar/actions/runs/41505458624), logged in [docs/verification.md](docs/verification.md)); the badge above shows the latest push |
-| Tests | 99 Rust contract tests (guard 88, claim registry 11) and 465 TypeScript tests, counted locally on 4 Nov 2026 at the filing-day commit (462 in CI on 2 Nov 2026; the 3 added since cover the precheck buyer-balance check and the metric's `withdraw_remaining_funds` counting) |
+| CI (last logged green run) | All four jobs green on 4 Nov 2026, 99 Rust and 465 TypeScript tests at 5c9f200 ([run 41896847056](https://github.com/zbagdzevicius/motored-stellar/actions/runs/41896847056)), logged in [docs/verification.md](docs/verification.md)); the badge above shows the latest push |
+| Tests | 99 Rust contract tests (guard 88, claim registry 11) and 465 TypeScript tests, counted locally on 4 Nov 2026 at the filing-day commit (465 in CI on 4 Nov 2026; the 3 added since 2 Nov cover the precheck buyer-balance check and the metric's `withdraw_remaining_funds` counting) |
 
 Every transaction of run 9 is in
 [docs/testnet-proofs.md, Run 9](docs/testnet-proofs.md#run-9-guard-v010-on-circle-testnet-eurc-29-oct-2026-1903-to-1910-utc).
@@ -236,9 +236,9 @@ pre-award work included in that state, not billed.
   locally on 4 Nov 2026 at the filing-day commit with the commands in
   [Reproduce the test counts](#reproduce-the-test-counts) (`cargo test` and vitest across the eight
   workspaces).
-- **CI:** the workflow runs on every push; the last logged green run had 99 Rust and 462 TypeScript
-  tests ([run 41505458624](https://github.com/zbagdzevicius/motored-stellar/actions/runs/41505458624), 2 Nov 2026,
-  logged in [docs/verification.md](docs/verification.md)), before the 3 tests added on 3 to 4 Nov.
+- **CI:** the workflow runs on every push; the last logged green run had 99 Rust and 465 TypeScript
+  tests ([run 41896847056](https://github.com/zbagdzevicius/motored-stellar/actions/runs/41896847056), 4 Nov 2026, at 5c9f200,
+  logged in [docs/verification.md](docs/verification.md)).
 
 <details>
 <summary>Earlier test counts</summary>

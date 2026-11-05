@@ -47,7 +47,7 @@ export interface MetricEscrow {
   amount: Units;
   /** First funding of the escrow (epoch ms). Decides which window it belongs to. */
   fundedAt: number;
-  /** Test, team or related-party escrow, excluded from the metric. */
+  /** Test, founder, team or related-party escrow, excluded from the metric. */
   excluded?: boolean;
 }
 

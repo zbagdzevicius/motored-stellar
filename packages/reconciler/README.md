@@ -110,7 +110,7 @@ aggregates only. It applies the published definition:
   so they never make up more than two thirds; the earliest count first. The
   cap was set from measured buyer-confirmation behaviour.
 - Only escrows whose `platform` is the registered address count, and the caller
-  can mark test or related-party escrows as `excluded`.
+  can mark test, founder, team or related-party escrows as `excluded`.
 
 ## Test
 
