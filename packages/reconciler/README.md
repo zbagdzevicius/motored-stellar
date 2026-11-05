@@ -21,7 +21,7 @@ Pre-award, not billed: the deliverables below bill only the live wiring around t
 | Deliverable | What this package provides |
 |---|---|
 | Reconciliation (Motored-funded, not billed) | The reconciliation rule (run every 15 minutes on testnet escrows): fee legs predicted with Trustless Work's own arithmetic (`tw-math.ts`), rounding in the recipient's favour predicted exactly, refund top-ups on their own line |
-| D7 monitoring plan (policies run by Motored) | Alert hooks: every P1/P2 finding goes to `ReportSink.alert` (stuck or reverted exits, reconciliation gaps, transfers out of escrows with no matching record, fee-account trustlines, frozen balances, caps) |
+| D8 monitoring plan (policies run by Motored) | Alert hooks: every P1/P2 finding goes to `ReportSink.alert` (stuck or reverted exits, reconciliation gaps, transfers out of escrows with no matching record, fee-account trustlines, frozen balances, caps) |
 | D12 rollout | The named failure states (billed); the 15-minute reconciliation in production, the daily pass/fail report and the metric computation (Motored-funded, not billed, still run and published) |
 
 ## Ports

@@ -342,7 +342,7 @@ export interface RunDeps {
   ledger: LedgerSource;
   chain: ChainReader;
   clock: Clock;
-  /** Optional: alerts for P1 and P2 findings go here (D7 monitoring hook). */
+  /** Optional: alerts for P1 and P2 findings go here (D8 monitoring hook). */
   sink?: ReportSink;
 }
 

@@ -5,8 +5,8 @@ target `wasm32v1-none`).
 
 | Crate | Path | What it does | SCF deliverable |
 |---|---|---|---|
-| `motored-escrow-guard` | [`guard/`](guard) | Custom account (`__check_auth`) that holds the Trustless Work v1 single-release `release_signer` and `dispute_resolver` roles and narrows them | D6 |
-| `claim-registry` | [`claim-registry/`](claim-registry) | Write-once Merkle roots of delivery claims, with anchor time and revocation | D6 (on-chain part) |
+| `motored-escrow-guard` | [`guard/`](guard) | Custom account (`__check_auth`) that holds the Trustless Work v1 single-release `release_signer` and `dispute_resolver` roles and narrows them | D7 |
+| `claim-registry` | [`claim-registry/`](claim-registry) | Write-once Merkle roots of delivery claims, with anchor time and revocation | D7 (on-chain part) |
 | `fake-escrow` | [`test-fixtures/fake-escrow/`](test-fixtures/fake-escrow) | Look-alike escrow used only by the guard's negative tests. Never deploy | test fixture |
 | Trustless Work Wasm | [`third_party/tw-wasm/`](third_party/tw-wasm) | `fetch.sh` downloads Trustless Work's deployed escrow Wasm by hash for the tests | test input |
 

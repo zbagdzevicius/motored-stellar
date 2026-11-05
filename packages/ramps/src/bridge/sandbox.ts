@@ -3,7 +3,7 @@
  *
  * The sandbox replaces compliance checks, bank activity and blockchain
  * transactions with simulated behaviour. It does NOT deliver testnet EURC:
- * no transaction is submitted to a blockchain. D5 is therefore verified in two
+ * no transaction is submitted to a blockchain. D6 is therefore verified in two
  * legs: the gateway API leg here (customer, KYC approval, virtual account and
  * liquidation address, simulated deposits and drains), and an on-chain leg on
  * Stellar testnet with the issuer's testnet EURC, run by the scripts in this
@@ -73,7 +73,7 @@ export class BridgeSandbox {
   ): Promise<SimulateDepositResult> {
     const raw = await this.#provider.http.post<{ success?: boolean; drain_id?: string }>(
       `/customers/${seg(customerId)}/liquidation_addresses/${seg(liquidationAddressId)}/simulate_deposit`,
-      // TODO(verify, D5): amount precision the sandbox accepts for EURC (the documented example is "100.00").
+      // TODO(verify, D6): amount precision the sandbox accepts for EURC (the documented example is "100.00").
       { currency: "eurc", amount: formatUnits(units) },
       idempotencyKey,
     );

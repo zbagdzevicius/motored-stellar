@@ -205,6 +205,6 @@ export interface Alert {
 export interface ReportSink {
   /** Publish a daily aggregate report (no per-order data). */
   writeDaily(report: DailyReport): Promise<void>;
-  /** Raise an internal alert (D7 monitoring hook). */
+  /** Raise an internal alert (D8 monitoring hook). */
   alert(alert: Alert): Promise<void>;
 }

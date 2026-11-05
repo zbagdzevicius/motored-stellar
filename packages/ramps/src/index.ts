@@ -3,7 +3,7 @@
  *
  * SEPA on-ramp and off-ramp for EURC on Stellar behind the `RampProvider`
  * port, with a Bridge implementation and an in-memory implementation.
- * Pre-award; used by SCF deliverable D5.
+ * Pre-award; used by SCF deliverable D6.
  */
 
 export * from "./amounts.js";

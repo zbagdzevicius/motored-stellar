@@ -1,7 +1,7 @@
 # @motored-stellar/ramps
 
 SEPA on-ramp and off-ramp for EURC on Stellar, behind one small port.
-Pre-award, not billed; used by SCF deliverable **D5: Bridge on-ramp and off-ramp in sandbox**.
+Pre-award, not billed; used by SCF deliverable **D6: Bridge on-ramp and off-ramp in sandbox**.
 
 - **Buyer on-ramp.** Hosted KYC link, then a EUR virtual account (an IBAN) whose
   SEPA deposits are delivered as EURC on Stellar to the buyer's own wallet. The
@@ -83,7 +83,7 @@ The tests need no network and no credentials. They cover:
 ## Sandbox and testnet
 
 The gateway's sandbox simulates deposits and drains. It sends nothing to any
-blockchain, so it delivers no testnet EURC. D5 is therefore shown in two
+blockchain, so it delivers no testnet EURC. D6 is therefore shown in two
 legs:
 
 1. The **API leg** against the sandbox with `BridgeSandbox`: customer, simulated
@@ -97,8 +97,8 @@ wire/ACH deposit route, so they do not apply to EUR on SEPA.
 
 ## TODO(verify)
 
-These items are not confirmed by the saved docs. Each one is marked `TODO(verify, D5)` in the code
-and closes in the D5 Bridge sandbox run:
+These items are not confirmed by the saved docs. Each one is marked `TODO(verify, D6)` in the code
+and closes in the D6 Bridge sandbox run:
 
 - the response fields of `POST /customers` (`status` vs `kyc_status`);
 - `business_name` on a business-owned EUR external account request;

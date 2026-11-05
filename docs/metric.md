@@ -2,16 +2,16 @@
 
 The metric is defined on public chain data only, and [`scripts/metric`](../scripts/metric)
 recomputes it. The script reads events from Stellar RPC, which keeps them for about 7 days only
-(SDF testnet RPC, `ledgerRetentionWindow` 120,960 ledgers), not the whole metric period. So D14
+(SDF testnet RPC, `ledgerRetentionWindow` 120,960 ledgers), not the whole metric period. So D5
 adds a scheduled CI job (GitHub Actions on a cron, read-only RPC, no keys) that commits the
 footprint's `scripts/metric` observation exports (JSON written with `--save-observations`, read
 back with `--observations`) to this repository at least every 3 days, starting on testnet from D1,
 not only from the first mainnet escrow; every export is taken while RPC still holds those ledgers.
-The D14 and D15 dashboard reads those committed exports plus a live RPC tail since the last one.
+The D5 and D14 dashboard reads those committed exports plus a live RPC tail since the last one.
 From the first mainnet escrow the platform also publishes weekly signed snapshots of the
 footprint's events, each event linked to stellar.expert, so anyone can check each snapshot against
 RPC that week and then feed the snapshots to the script with `--observations`. The committed
-exports and the signed snapshots are the recompute path for the payment #3 metric and for the D15
+exports and the signed snapshots are the recompute path for the payment #3 metric and for the D14
 dashboard. SDF's Hubble dataset (Stellar history on
 BigQuery) also holds the older events; an adapter for it is not a deliverable and not needed for
 the metric.
@@ -145,7 +145,7 @@ footprint at award time; mainnet use waits for the gates in the submission's Tra
    without it counts as silent in `packages/reconciler/src/metric.ts`).
 
 RPC keeps events for about 7 days only, so a full recompute reads from the observation exports
-D14's scheduled CI job commits at least every 3 days from D1 on testnet, and from the weekly signed
+D5's scheduled CI job commits at least every 3 days from D1 on testnet, and from the weekly signed
 snapshots the platform publishes from the first mainnet escrow (at Motored's own cost, not billed to
 SCF); the script takes an `EventSource` port for that reason (an archive source such as SDF's Hubble
 dataset could be added later, outside the award). The RPC collector refuses a start ledger older

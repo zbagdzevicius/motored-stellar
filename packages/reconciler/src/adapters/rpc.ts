@@ -255,7 +255,7 @@ export function eventCursorLedger(cursor: string): number {
 
 /**
  * Decode a SAC `transfer` event. Topics: [transfer, from, to, asset]. Data is
- * an i128 amount, or (TODO(verify, D5), CAP-67 muxed form, not yet seen live) a map with `amount`.
+ * an i128 amount, or (TODO(verify, D6), CAP-67 muxed form, not yet seen live) a map with `amount`.
  */
 export function decodeTransfer(ev: {
   topic: xdr.ScVal[];

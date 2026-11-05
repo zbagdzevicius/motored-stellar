@@ -84,7 +84,7 @@ Alerts read Soroban RPC `getEvents`, Horizon, and the reconciler output. Severit
 operator; P2 is reviewed the same day.
 
 The same 14 alerts, in the same order, are listed in
-[scf-46-architecture.md, appendix A, D7](scf-46-architecture.md#d7-alerts).
+[scf-46-architecture.md, appendix A, D8](scf-46-architecture.md#d8-alerts).
 
 | # | Alert | Source | Severity |
 |---|---|---|---|

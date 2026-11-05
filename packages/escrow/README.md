@@ -11,7 +11,7 @@ work that wires this package into the order system):
 |---|---|
 | D1 Trustless Work escrow in EURC | `TrustlessWorkRestClient` (v1 REST), `deployer.ts` (on-chain deployer fallback, deploy + init in one transaction), `precheck.ts` (`guard.check_escrow` + `get_escrow` re-read before a funding call), `events.ts` (event reader), `lifecycle.ts` |
 | D3b escrow ledger rules | `fees.ts`: `platform_fee_bps = floor((9970 * amount - 10000 * card_net) / amount)`, cap 9,900 or the guard's (`MAINNET_MAX_PLATFORM_FEE_BPS` 1,000), shipping outside the escrow (`orderAmountsCents`), half-up card-rail rounding, Trustless Work fee floors, refund top-up |
-| D6 release service auth path | `release-service.ts` + `guard-auth.ts`: `release_funds`, `resolve_dispute` and `withdraw_remaining_funds` with the guard's custom-account authorization entry |
+| D7 release service auth path | `release-service.ts` + `guard-auth.ts`: `release_funds`, `resolve_dispute` and `withdraw_remaining_funds` with the guard's custom-account authorization entry |
 | D4 end-to-end building block | `ports.ts` + in-memory implementations used by `examples/order-flow` |
 
 ## How it fits

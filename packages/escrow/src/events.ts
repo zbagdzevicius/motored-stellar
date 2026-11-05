@@ -104,8 +104,8 @@ export function decodeEvent(raw: RawContractEvent): DecodedEvent {
     case 'transfer': {
       // SAC transfer: topics [transfer, from, to, asset?]; data is the i128 amount,
       // or (CAP-67, muxed destinations) a map with `amount`.
-      // TODO(verify, D5): the map form `{ amount, to_muxed_id }` against a live muxed transfer
-      // (no run so far sent to a muxed address; the Bridge sandbox run in D5 is the first that may).
+      // TODO(verify, D6): the map form `{ amount, to_muxed_id }` against a live muxed transfer
+      // (no run so far sent to a muxed address; the Bridge sandbox run in D6 is the first that may).
       const from = topics[1];
       const to = topics[2];
       if (typeof from !== 'string' || typeof to !== 'string') break;
